@@ -138,6 +138,7 @@ def init_simulation (config):
 
     # Read spec file
     spec_file_name = config.get(conf.SEC_SIM, conf.SPEC_FILE, fallback=None)
+    spec_file_name = "spec.yml"
     classes, functions, node2arrivals  = read_spec_file (spec_file_name, infra, config)
 
     sim = Simulation(config, seed_sequence, infra, functions, classes, node2arrivals)

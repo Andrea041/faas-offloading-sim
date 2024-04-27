@@ -5,12 +5,15 @@ from heapq import heappop, heappush
 import numpy as np
 from numpy.random import SeedSequence, default_rng
 import sys
+import json
 
 import conf
 import utils.plot
-from policy import SchedulerDecision
+from policy import SchedulerDecision, CloudPolicy
 import policy
 import probabilistic
+import dqn
+from dqn import DQN, SHOW_PRINTS
 from faas import *
 import stateful
 from stateful import key_locator
@@ -163,6 +166,8 @@ class Simulation:
             return stateful.StateAwareOffloadingPolicy(self, node)
         elif configured_policy == "state-aware-always-offload":
             return stateful.AlwaysOffloadStatefulPolicy(self, node)
+        elif configured_policy == "dqn":
+            return DQN(self, node)
         else:
             raise RuntimeError(f"Unknown policy: {configured_policy}")
 
@@ -208,7 +213,7 @@ class Simulation:
 
         self.policy_update_interval = self.config.getfloat(conf.SEC_POLICY, conf.POLICY_UPDATE_INTERVAL, fallback=-1)
         self.rate_update_interval = self.config.getfloat(conf.SEC_SIM, conf.RATE_UPDATE_INTERVAL, fallback=-1)
-        print(self.rate_update_interval)
+        #print(self.rate_update_interval)
         self.stats_print_interval = self.config.getfloat(conf.SEC_SIM, conf.STAT_PRINT_INTERVAL, fallback=-1)
         self.stats_file = sys.stdout
 
@@ -255,12 +260,18 @@ class Simulation:
             t,e = heappop(self.events)
             self.handle(t, e)
 
+        # save json stats
+        for n,p in self.node2policy.items():
+            if isinstance(p, DQN):
+                with open("dqn_results/"+n.name+".json", "w") as file_json:
+                    json.dump(p.stats, file_json)
+
         if self.stats_print_interval > 0:
             self.print_periodic_stats()
             print("]", file=self.stats_file)
             if self.stats_file != sys.stdout:
                 self.stats_file.close()
-                self.stats.print(sys.stdout)
+                #self.stats.print(sys.stdout)
         elif self.config.getboolean(conf.SEC_SIM, conf.PRINT_FINAL_STATS, fallback=True):
             self.stats.print(sys.stdout)
         else:
@@ -447,7 +458,10 @@ class Simulation:
             self.stats.ext_arrivals[(f,c,n)] += 1
 
         # Policy
-        sched_decision, target_node = node_policy.schedule(f,c,event.offloaded_from)
+        if isinstance(node_policy, DQN):
+            sched_decision, original_decision, state, target_node = node_policy.schedule(event)
+        else:
+            sched_decision, target_node = node_policy.schedule(f,c,event.offloaded_from)
 
         if sched_decision == SchedulerDecision.EXEC:
             duration, data_access_time = self.next_function_duration(f, n)
@@ -463,11 +477,31 @@ class Simulation:
                 init_time = self.init_time[(f,n)]
             arrival_time = self.t if event.original_arrival_time is None else event.original_arrival_time
             self.schedule(float(self.t + init_time + duration), Completion(arrival_time, f,c, n, init_time > 0, duration, event.offloaded_from, data_access_time))
+            if isinstance(node_policy, DQN):
+                node_policy.get_reward(state,sched_decision,original_decision,event,float(self.t + init_time + duration - arrival_time))
+            elif isinstance(node_policy, CloudPolicy):
+                if SHOW_PRINTS:
+                    print("[{:.2f}]".format(self.t), "cloud EXEC from", event.offloaded_from[-1])
+                original_node = event.offloaded_from[-1]
+                original_node_policy = self.node2policy[original_node]
+                if isinstance(original_node_policy, DQN):
+                    pending_event = original_node_policy.pending_events[event.original_arrival_time]
+                    original_node_policy.get_reward(pending_event[0], pending_event[1], None, pending_event[2], float(self.t + init_time + duration - arrival_time))
         elif sched_decision == SchedulerDecision.DROP:
             self.stats.dropped_reqs[(f,c,n)] += 1
             self.stats.penalty += c.drop_penalty
             if event.offloaded_from is not None and len(event.offloaded_from) > 0:
                 self.stats.dropped_offloaded[(f,c,n)] += 1
+            if isinstance(node_policy, DQN):
+                node_policy.get_reward(state,sched_decision,original_decision,event,None)
+            elif isinstance(node_policy, CloudPolicy):
+                if SHOW_PRINTS:
+                    print("[{:.2f}]".format(self.t), "cloud DROP from", event.offloaded_from[-1])
+                original_node = event.offloaded_from[-1]
+                original_node_policy = self.node2policy[original_node]
+                if isinstance(original_node_policy, DQN):
+                    pending_event = original_node_policy.pending_events[event.original_arrival_time]
+                    original_node_policy.get_reward(pending_event[0], pending_event[1], None, pending_event[2], float(self.t + init_time + duration - arrival_time))
         elif sched_decision == SchedulerDecision.OFFLOAD_CLOUD:
             if target_node is not None:
                 remote_node = target_node
@@ -484,7 +518,7 @@ class Simulation:
                 self.stats.penalty += c.drop_penalty
             else:
                 self.stats.offloaded[(f,c,n)] += 1
-                self.do_offload(event, remote_node)  
+                self.do_offload(event, remote_node)
         elif sched_decision == SchedulerDecision.OFFLOAD_EDGE:
             if target_node is not None:
                 remote_node = target_node
