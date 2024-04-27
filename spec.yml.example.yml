@@ -1,0 +1,88 @@
+classes:
+  - name: critical
+    max_resp_time: 0.500
+    utility: 1.0
+    arrival_weight: 1.0
+    deadline_penalty: 0.1
+    drop_penalty: 0.05
+  - name: best-effort
+    max_resp_time: 0.500
+    utility: 0.1
+    arrival_weight: 1.0
+  - name: deferrable
+    max_resp_time: 5.0
+    utility: 0.5
+    arrival_weight: 1.0
+nodes:
+  - name: edge1
+    region: edge
+    memory: 2048
+    policy: dqn
+  - name: edge2
+    region: edge
+    memory: 2048
+    policy: dqn
+  - name: edge3
+    region: edge
+    memory: 2048
+    policy: dqn
+  - name: cloud1
+    region: cloud
+    cost: 0.01
+    speedup: 1.0
+    memory: 32000
+functions:
+  - name: f1
+    memory: 1024
+    duration_mean: 0.240
+    duration_scv: 1.0
+  - name: f2
+    memory: 124
+    duration_mean: 0.440
+    duration_scv: 1.0
+  - name: f3
+    memory: 1524
+    duration_mean: 0.120
+    duration_scv: 1.0
+  - name: f4
+    memory: 1024
+    duration_mean: 0.240
+    duration_scv: 1.0
+arrivals:
+  - node: edge1
+    function: f1
+    rate: 1
+  - node: edge1
+    function: f2
+    rate: 1
+  - node: edge1
+    function: f3
+    rate: 1
+  - node: edge1
+    function: f4
+    rate: 1
+  - node: edge2
+    function: f1
+    rate: 1
+  - node: edge2
+    function: f2
+    rate: 1
+  - node: edge2
+    function: f3
+    rate: 1
+  - node: edge2
+    function: f4
+    rate: 1
+  - node: edge3
+    function: f1
+    rate: 1
+  - node: edge3
+    function: f2
+    rate: 1
+  - node: edge3
+    function: f3
+    rate: 1
+  - node: edge3
+    function: f4
+    rate: 1
+      #map: "-1; 0.5; 0.5; -1; 0.5; 0; 0.5; 0"
