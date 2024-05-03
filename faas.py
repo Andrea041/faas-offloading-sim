@@ -21,7 +21,7 @@ class ContainerPool:
     def front (self):
         return self.pool[0]
 
-    def reclaim_memory (self, required_mem):
+    def reclaim_memory (self, required_mem, reclaim_memory=True):
         mem = [entry[0].memory for entry in self.pool]
         if sum(mem) < required_mem:
             return 0.0
@@ -30,7 +30,8 @@ class ContainerPool:
         while reclaimed < required_mem:
             f = s[0]
             s = s[1:]
-            self.remove(f)
+            if reclaim_memory:
+                self.remove(f)
             reclaimed += f.memory
         return reclaimed
 

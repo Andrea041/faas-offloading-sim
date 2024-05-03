@@ -42,6 +42,8 @@ class Arrival(Event):
     arrival_proc: ArrivalProcess = None
     offloaded_from: [Node] = field(default_factory=list)
     original_arrival_time: float = None
+    # dovuto aggiungere altrimenti non ho la catena per ricevere i reward
+    t_waiting_for_reward: [float] = field(default_factory=list)
 
 @dataclass
 class CheckExpiredContainers(Event):
@@ -349,7 +351,7 @@ class Simulation:
 
         self.__event_counter += 1
         if self.__event_counter % 10000 == 0:
-            print(t)
+            #print(t)
             self.__event_counter = 0
         if isinstance(event, Arrival):
             self.handle_arrival(event)
@@ -444,10 +446,14 @@ class Simulation:
         remote_arv.offloaded_from.append(arrival.node)
         remote_arv.original_arrival_time = self.t
 
+        remote_arv.t_waiting_for_reward = arrival.t_waiting_for_reward
+        if isinstance(self.node2policy[arrival.node], DQN):
+            remote_arv.t_waiting_for_reward.append(self.t)
+
         self.schedule(self.t + latency + OFFLOADING_OVERHEAD + transfer_time, remote_arv)
 
     def handle_arrival (self, event):
-        n = event.node 
+        n = event.node
         node_policy = self.node2policy[n]
         external = len(event.offloaded_from) == 0
         arv_proc = event.arrival_proc
@@ -459,7 +465,7 @@ class Simulation:
 
         # Policy
         if isinstance(node_policy, DQN):
-            sched_decision, original_decision, state, target_node = node_policy.schedule(event)
+            sched_decision, target_node = node_policy.schedule(event)
         else:
             sched_decision, target_node = node_policy.schedule(f,c,event.offloaded_from)
 
@@ -478,30 +484,34 @@ class Simulation:
             arrival_time = self.t if event.original_arrival_time is None else event.original_arrival_time
             self.schedule(float(self.t + init_time + duration), Completion(arrival_time, f,c, n, init_time > 0, duration, event.offloaded_from, data_access_time))
             if isinstance(node_policy, DQN):
-                node_policy.get_reward(state,sched_decision,original_decision,event,float(self.t + init_time + duration - arrival_time))
-            elif isinstance(node_policy, CloudPolicy):
+                reward = node_policy.get_reward(sched_decision,event,float(self.t + init_time + duration - arrival_time))
+            if bool(event.offloaded_from):
                 if SHOW_PRINTS:
-                    print("[{:.2f}]".format(self.t), "cloud EXEC from", event.offloaded_from[-1])
-                original_node = event.offloaded_from[-1]
-                original_node_policy = self.node2policy[original_node]
-                if isinstance(original_node_policy, DQN):
-                    pending_event = original_node_policy.pending_events[event.original_arrival_time]
-                    original_node_policy.get_reward(pending_event[0], pending_event[1], None, pending_event[2], float(self.t + init_time + duration - arrival_time))
+                    print("[{:.2f}]".format(self.t), n.name, "EXEC for", event.offloaded_from)
+                for original_node in reversed(event.offloaded_from):
+                    original_node_policy = self.node2policy[original_node]
+                    # se era stato fatto l'offload da almeno un nodo DQN propago i reward
+                    if isinstance(original_node_policy, DQN):
+                        pending_event = original_node_policy.pending_events.pop(event.t_waiting_for_reward[-1])
+                        original_node_policy.get_reward(pending_event[1], pending_event[2], float(self.t + init_time + duration - arrival_time))
+                        event.t_waiting_for_reward.pop()
         elif sched_decision == SchedulerDecision.DROP:
             self.stats.dropped_reqs[(f,c,n)] += 1
             self.stats.penalty += c.drop_penalty
             if event.offloaded_from is not None and len(event.offloaded_from) > 0:
                 self.stats.dropped_offloaded[(f,c,n)] += 1
             if isinstance(node_policy, DQN):
-                node_policy.get_reward(state,sched_decision,original_decision,event,None)
-            elif isinstance(node_policy, CloudPolicy):
+                reward = node_policy.get_reward(sched_decision,event,None)
+            if bool(event.offloaded_from):
                 if SHOW_PRINTS:
-                    print("[{:.2f}]".format(self.t), "cloud DROP from", event.offloaded_from[-1])
-                original_node = event.offloaded_from[-1]
-                original_node_policy = self.node2policy[original_node]
-                if isinstance(original_node_policy, DQN):
-                    pending_event = original_node_policy.pending_events[event.original_arrival_time]
-                    original_node_policy.get_reward(pending_event[0], pending_event[1], None, pending_event[2], float(self.t + init_time + duration - arrival_time))
+                    print("[{:.2f}]".format(self.t), n.name, "DROP for", event.offloaded_from)
+                for original_node in reversed(event.offloaded_from):
+                    original_node_policy = self.node2policy[original_node]
+                    # se era stato fatto l'offload da almeno un nodo DQN propago i reward
+                    if isinstance(original_node_policy, DQN):
+                        pending_event = original_node_policy.pending_events.pop(event.t_waiting_for_reward[-1])
+                        original_node_policy.get_reward(pending_event[1], pending_event[2], float(self.t + init_time + duration - arrival_time))
+                        event.t_waiting_for_reward.pop()
         elif sched_decision == SchedulerDecision.OFFLOAD_CLOUD:
             if target_node is not None:
                 remote_node = target_node
@@ -532,9 +542,13 @@ class Simulation:
                 self.stats.offloaded[(f,c,n)] += 1
                 self.do_offload(event, remote_node)  
 
+        if isinstance(node_policy, DQN):
+            node_policy.train()
+
         # Schedule next (if this is an external arrival)
         if external:
             self.__schedule_next_arrival(n, arv_proc)
+
 
     def next_function_duration (self, f: Function, n: Node):
         # execution time
