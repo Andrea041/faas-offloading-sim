@@ -2,7 +2,6 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import random
-from collections import deque
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
@@ -16,8 +15,8 @@ class Agent():
         # TODO: passare tutti questi valori da un file di configurazione
         self.state_size = 11
         self.action_size = 4
-        # (state, action, reward, next_state, next_allowed_actions)
-        self.memory = deque(maxlen=2000)
+        # [(state, action, reward, next_state, next_allowed_actions)]
+        self.memory = []
         # dizionario {event:[state,action]} in attesa di:
         #   - next_state & next_allowed_actions
         #   - reward
@@ -113,7 +112,11 @@ class DQN(Policy):
 
             "EXEC": [0,0],
             "OFFLOAD_CLOUD": [0,0,0],
-            "OFFLOAD_EDGE": [0,0,0]
+            "OFFLOAD_EDGE": [0,0,0],
+
+            "critical_reward" : [0,0,0],
+            "best-effort_reward" : [0,0,0],
+            "deferrable_reward" : [0,0,0],
         }
 
         self.time = 0
@@ -260,9 +263,11 @@ class DQN(Policy):
             if c.max_rt <= 0.0 or duration <= c.max_rt:
                 reward = c.utility
                 self.stats["EXEC"][0] += 1
+                self.stats[c.name+"_reward"][0] += 1
             else:
                 reward = -c.deadline_penalty
                 self.stats["EXEC"][1] += 1
+                self.stats[c.name+"_reward"][1] += 1
             if SHOW_PRINTS:
                 print("[{:.2f}]".format(self.simulation.t), event.node, end=" ")
                 print("EXEC from {} : {}".format(event.offloaded_from[-1], reward) if bool(event.offloaded_from) else "EXEC : {}".format(reward))
@@ -270,6 +275,7 @@ class DQN(Policy):
             reward = -c.drop_penalty
             # serve nelle risposte a ritroso dell'offload per far capire che è avvenuto il drop
             duration = -1
+            self.stats[c.name+"_reward"][2] += 1
             if SHOW_PRINTS:
                 print("[{:.2f}]".format(self.simulation.t), event.node, end=" ")
                 print("DROP from {} : {}".format(event.offloaded_from[-1], reward) if bool(event.offloaded_from) else "DROP : {}".format(reward))
@@ -277,18 +283,21 @@ class DQN(Policy):
             # se la durata è negativa è avvenuto un drop
             if duration < 0:
                 reward = -c.drop_penalty
+                self.stats[c.name+"_reward"][2] += 1
                 if action == SchedulerDecision.OFFLOAD_CLOUD:
                     self.stats["OFFLOAD_CLOUD"][2] += 1
                 else:
                     self.stats["OFFLOAD_EDGE"][2] += 1
             elif c.max_rt <= 0.0 or duration <= c.max_rt:
                 reward = c.utility
+                self.stats[c.name+"_reward"][0] += 1
                 if action == SchedulerDecision.OFFLOAD_CLOUD:
                     self.stats["OFFLOAD_CLOUD"][0] += 1
                 else:
                     self.stats["OFFLOAD_EDGE"][0] += 1
             else:
                 reward = -c.deadline_penalty
+                self.stats[c.name+"_reward"][1] += 1
                 if action == SchedulerDecision.OFFLOAD_CLOUD:
                     self.stats["OFFLOAD_CLOUD"][1] += 1
                 else:
