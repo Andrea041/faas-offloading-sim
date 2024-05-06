@@ -203,8 +203,8 @@ class DQN(Policy):
         if not can_execute_on_edge:
             actions[2] = False
         # se c'è almeno 1 soluzione, disabilita il drop
-        if any(actions[:3]):
-            actions[3] = False
+        # if any(actions[:3]):
+        #     actions[3] = False
         return actions
 
 
