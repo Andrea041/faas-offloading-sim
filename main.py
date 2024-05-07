@@ -2,6 +2,7 @@ import sys
 import math
 import numpy as np
 import yaml
+import time
 
 import faas
 import conf
@@ -123,6 +124,7 @@ def read_spec_file (spec_file_name, infra, config):
 
 def init_simulation (config):
     seed = config.getint(conf.SEC_SIM, conf.SEED, fallback=1)
+    seed = int(time.time())
     seed_sequence = SeedSequence(seed)
 
     # Regions

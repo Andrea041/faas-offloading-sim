@@ -2,11 +2,12 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import random
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 from policy import Policy, SchedulerDecision
 
+TRAIN = False
 SHOW_PRINTS = False
 
 
@@ -26,7 +27,7 @@ class Agent():
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 0.001
-        self.batch_size = 3
+        self.batch_size = 4
         self.model = self._build_model()
 
     def _build_model(self):
@@ -40,7 +41,7 @@ class Agent():
 
     def act(self, state, action_filter):
         allowed_actions = [i for i, value in enumerate(action_filter) if value]
-        if np.random.rand() <= self.epsilon:
+        if TRAIN and np.random.rand() <= self.epsilon:
             return random.choice(allowed_actions)
         act_values = self.model.predict(state, verbose=0)[0].tolist()
         for val in sorted(act_values, reverse=True):
@@ -66,6 +67,13 @@ class Agent():
             self.epsilon *= self.epsilon_decay
         return loss
 
+    def save(self):
+        save_model(self.model, "dqn_results/model.keras")
+        print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
+
+    def load(self):
+        self.model = load_model("dqn_results/model.keras")
+
 
 
 class DQN(Policy):
@@ -74,11 +82,9 @@ class DQN(Policy):
     - perc_available_local_memory (float)
     - can_execute_on_edge (boolean)
     - can_execute_on_cloud (boolean)
-    - local_cold_start (boolean)
     - function_id (one_hot)
     - class_id (one_hot)
     - has_been_offloaded (boolean)
-    - time_left (float)
     '''
     def __init__(self, simulation, node):
         super().__init__(simulation, node)
@@ -93,6 +99,8 @@ class DQN(Policy):
         self.possible_decisions = list(SchedulerDecision)
 
         self.agent = Agent()
+        if not TRAIN:
+            self.agent.load()
 
         self.how_many_offload_allowed = 3
 
@@ -111,12 +119,14 @@ class DQN(Policy):
             "loss": [0],
 
             "EXEC": [0,0],
-            "OFFLOAD_CLOUD": [0,0,0],
-            "OFFLOAD_EDGE": [0,0,0],
+            "OFFLOAD_CLOUD": [0,0],
+            "OFFLOAD_EDGE": [0,0],
 
             "critical_reward" : [0,0,0],
             "best-effort_reward" : [0,0,0],
             "deferrable_reward" : [0,0,0],
+
+            "reward_cost": [0],
         }
 
         self.time = 0
@@ -211,13 +221,12 @@ class DQN(Policy):
     def get_state(self, e):
         f = e.function
         c = e.qos_class
-        available_local_memory = e.node.curr_memory + e.node.warm_pool.reclaim_memory(f.memory, reclaim_memory=False)
+        available_local_memory = e.node.curr_memory + sum([entry[0].memory for entry in e.node.warm_pool.pool])
         perc_av_loc_mem = available_local_memory / e.node.total_memory
         best_edge_node = self.get_best_edge_node(f.memory, e.offloaded_from)
         can_execute_on_edge = True if best_edge_node is not None else False
         # ASSUMO CHE CI SIA SEMPRE ALMENO 1 NODO CLOUD E CHE IL CLOUD ABBIA RISORSE DISPONIBILI
         can_execute_on_cloud = self.simulation.stats.cost / self.simulation.t * 3600 < self.budget
-        local_cold_start = not f in e.node.warm_pool
         function_index = self.simulation.functions.index(f)
         function_one_hot = [0] * len(self.simulation.functions)
         function_one_hot[function_index] = 1
@@ -226,9 +235,6 @@ class DQN(Policy):
         class_one_hot[class_index] = 1
         has_been_offloaded = bool(e.offloaded_from)
         arrival_time = e.original_arrival_time if e.original_arrival_time is not None else self.simulation.t
-        time_left = self.simulation.t - arrival_time - c.max_rt
-        #return [perc_av_loc_mem, can_execute_on_edge, can_execute_on_cloud, local_cold_start] + function_one_hot + class_one_hot + [has_been_offloaded, time_left], best_edge_node
-        # return [perc_av_loc_mem, can_execute_on_edge, can_execute_on_cloud, local_cold_start] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
         return [perc_av_loc_mem, can_execute_on_edge, can_execute_on_cloud] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
 
 
@@ -249,7 +255,7 @@ class DQN(Policy):
         return self.simulation.node_choice_rng.choice(chosen)
 
 
-    def get_reward(self, action, event, duration):
+    def get_reward(self, action, event, duration, cost):
         c = event.qos_class
 
         if action == SchedulerDecision.EXEC:
@@ -282,28 +288,32 @@ class DQN(Policy):
         elif action == SchedulerDecision.OFFLOAD_CLOUD or action == SchedulerDecision.OFFLOAD_EDGE:
             # se la durata è negativa è avvenuto un drop
             if duration < 0:
-                reward = -c.drop_penalty
-                self.stats[c.name+"_reward"][2] += 1
-                if action == SchedulerDecision.OFFLOAD_CLOUD:
-                    self.stats["OFFLOAD_CLOUD"][2] += 1
-                else:
-                    self.stats["OFFLOAD_EDGE"][2] += 1
+                # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
+                print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
+                exit(1)
             elif c.max_rt <= 0.0 or duration <= c.max_rt:
                 reward = c.utility
                 self.stats[c.name+"_reward"][0] += 1
-                if action == SchedulerDecision.OFFLOAD_CLOUD:
-                    self.stats["OFFLOAD_CLOUD"][0] += 1
-                else:
-                    self.stats["OFFLOAD_EDGE"][0] += 1
+                self.stats[str(action).split(".")[1]][0] += 1
             else:
                 reward = -c.deadline_penalty
                 self.stats[c.name+"_reward"][1] += 1
-                if action == SchedulerDecision.OFFLOAD_CLOUD:
-                    self.stats["OFFLOAD_CLOUD"][1] += 1
-                else:
-                    self.stats["OFFLOAD_EDGE"][1] += 1
+                self.stats[str(action).split(".")[1]][1] += 1
             if SHOW_PRINTS:
                 print("[{:.2f}]".format(self.simulation.t), event.node,"OFFLOAD completed :",reward)
+
+        self.stats["reward"].append(reward)
+
+        # considerando un costo medio di 0,002121561004, ho deciso di moltiplicarlo per 10
+        cost = cost * 10
+
+        # pesi rispettivamente per utility/penalty e cost
+        w1 = 0.5
+        w2 = 1 - w1
+
+        reward = w1 * reward - w2 * cost
+
+        self.stats["reward_cost"].append(reward)
 
         # aggiungo il reward nel 'pending_memory'
         arrival_time = event.original_arrival_time if event.original_arrival_time is not None else self.simulation.t
@@ -317,10 +327,8 @@ class DQN(Policy):
             val = self.agent.pending_memory.pop(arrival_time)
             self.agent.memory.append(tuple(val))
 
-        self.stats["reward"].append(reward)
-
 
     def train(self):
-        if len(self.agent.memory) >= self.agent.batch_size:
+        if TRAIN and len(self.agent.memory) >= self.agent.batch_size:
             loss = self.agent.learn()
             self.stats["loss"].append(np.mean(loss))

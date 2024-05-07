@@ -13,7 +13,7 @@ from policy import SchedulerDecision, CloudPolicy
 import policy
 import probabilistic
 import dqn
-from dqn import DQN, SHOW_PRINTS
+from dqn import DQN, SHOW_PRINTS, TRAIN
 from faas import *
 import stateful
 from stateful import key_locator
@@ -267,6 +267,8 @@ class Simulation:
             if isinstance(p, DQN):
                 with open("dqn_results/"+n.name+".json", "w") as file_json:
                     json.dump(p.stats, file_json)
+                    if TRAIN:
+                        p.agent.save()
 
         if self.stats_print_interval > 0:
             self.print_periodic_stats()
@@ -483,8 +485,10 @@ class Simulation:
                 init_time = self.init_time[(f,n)]
             arrival_time = self.t if event.original_arrival_time is None else event.original_arrival_time
             self.schedule(float(self.t + init_time + duration), Completion(arrival_time, f,c, n, init_time > 0, duration, event.offloaded_from, data_access_time))
+            tot_duration = float(self.t + init_time + duration - arrival_time)
+            cost = duration * f.memory/1024 * n.cost
             if isinstance(node_policy, DQN):
-                reward = node_policy.get_reward(sched_decision,event,float(self.t + init_time + duration - arrival_time))
+                reward = node_policy.get_reward(sched_decision, event, tot_duration, cost)
             if bool(event.offloaded_from):
                 if SHOW_PRINTS:
                     print("[{:.2f}]".format(self.t), n.name, "EXEC for", event.offloaded_from)
@@ -493,7 +497,7 @@ class Simulation:
                     # se era stato fatto l'offload da almeno un nodo DQN propago i reward
                     if isinstance(original_node_policy, DQN):
                         pending_event = original_node_policy.pending_events.pop(event.t_waiting_for_reward[-1])
-                        original_node_policy.get_reward(pending_event[1], pending_event[2], float(self.t + init_time + duration - arrival_time))
+                        original_node_policy.get_reward(pending_event[1], pending_event[2], tot_duration, cost)
                         event.t_waiting_for_reward.pop()
         elif sched_decision == SchedulerDecision.DROP:
             self.stats.dropped_reqs[(f,c,n)] += 1
@@ -501,17 +505,11 @@ class Simulation:
             if event.offloaded_from is not None and len(event.offloaded_from) > 0:
                 self.stats.dropped_offloaded[(f,c,n)] += 1
             if isinstance(node_policy, DQN):
-                reward = node_policy.get_reward(sched_decision,event,None)
-            if bool(event.offloaded_from):
-                if SHOW_PRINTS:
-                    print("[{:.2f}]".format(self.t), n.name, "DROP for", event.offloaded_from)
-                for original_node in reversed(event.offloaded_from):
-                    original_node_policy = self.node2policy[original_node]
-                    # se era stato fatto l'offload da almeno un nodo DQN propago i reward
-                    if isinstance(original_node_policy, DQN):
-                        pending_event = original_node_policy.pending_events.pop(event.t_waiting_for_reward[-1])
-                        original_node_policy.get_reward(pending_event[1], pending_event[2], float(self.t + init_time + duration - arrival_time))
-                        event.t_waiting_for_reward.pop()
+                reward = node_policy.get_reward(sched_decision, event, None, 0)
+            if any(isinstance(self.node2policy[original_node], DQN) for original_node in reversed(event.offloaded_from)):
+                # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
+                print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
+                exit(1)
         elif sched_decision == SchedulerDecision.OFFLOAD_CLOUD:
             if target_node is not None:
                 remote_node = target_node
