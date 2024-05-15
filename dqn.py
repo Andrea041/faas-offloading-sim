@@ -2,33 +2,48 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import random
+import pandas as pd
+import yaml
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 from policy import Policy, SchedulerDecision
 
-TRAIN = False
+TRAIN = True
 SHOW_PRINTS = False
 
 
 class Agent():
-    def __init__(self):
-        # TODO: passare tutti questi valori da un file di configurazione
-        self.state_size = 11
-        self.action_size = 4
-        # [(state, action, reward, next_state, next_allowed_actions)]
-        self.memory = []
-        # dizionario {event:[state,action]} in attesa di:
-        #   - next_state & next_allowed_actions
-        #   - reward
-        self.pending_memory = {}
-        self.gamma = 0.95
-        self.epsilon = 1.0
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
-        self.learning_rate = 0.001
-        self.batch_size = 4
-        self.model = self._build_model()
+    def __init__(self, node_name):
+        node_found = False
+        with open("dqn_config.yml", 'r') as file:
+            config = yaml.safe_load(file)
+            for node in config["nodes"]:
+                if node["name"] == node_name:
+                    self.state_size = node["state_size"]
+                    self.action_size = node["action_size"]
+                    # [(state, action, reward, next_state, next_allowed_actions)]
+                    self.memory = []
+                    # dizionario {event:[state,action]} in attesa di:
+                    #   - next_state & next_allowed_actions
+                    #   - reward
+                    self.pending_memory = {}
+                    self.gamma = node["gamma"]
+                    self.epsilon = node["epsilon"]
+                    self.epsilon_min = node["epsilon_min"]
+                    self.epsilon_decay = node["epsilon_decay"]
+                    self.learning_rate = node["learning_rate"]
+                    self.batch_size = node["batch_size"]
+                    self.stable = not TRAIN     # in questo modo quando non faccio training risulta stabile
+                    self.stable_treshold = node["stable_treshold"]
+                    self.train_round = 0
+                    self.train_every = node["train_every"]
+                    self.model = self._build_model()
+                    node_found = True
+                    break
+        if not node_found:
+            print("ERROR: node '" + node_name + "' not found in 'dqn_config.yml'!")
+            exit(1)
 
     def _build_model(self):
         model = Sequential()
@@ -98,7 +113,7 @@ class DQN(Policy):
 
         self.possible_decisions = list(SchedulerDecision)
 
-        self.agent = Agent()
+        self.agent = Agent(node.name)
         if not TRAIN:
             self.agent.load()
 
@@ -130,6 +145,7 @@ class DQN(Policy):
         }
 
         self.time = 0
+        self.periodic_stats = 360
 
 
     def schedule(self, e):
@@ -304,11 +320,11 @@ class DQN(Policy):
 
         self.stats["reward"].append(reward)
 
-        # considerando un costo medio di 0,002121561004, ho deciso di moltiplicarlo per 10
-        cost = cost * 10
+        # considerando un costo medio di 0,002121561004, ho deciso di moltiplicarlo per 100
+        cost = cost * 100
 
         # pesi rispettivamente per utility/penalty e cost
-        w1 = 0.5
+        w1 = 0.3
         w2 = 1 - w1
 
         reward = w1 * reward - w2 * cost
@@ -328,7 +344,18 @@ class DQN(Policy):
             self.agent.memory.append(tuple(val))
 
 
-    def train(self):
-        if TRAIN and len(self.agent.memory) >= self.agent.batch_size:
+    def train(self):        
+        if TRAIN and len(self.agent.memory) >= self.agent.batch_size and (not self.agent.stable or self.agent.train_round%self.agent.train_every == 0):
             loss = self.agent.learn()
             self.stats["loss"].append(np.mean(loss))
+
+        if self.agent.stable:
+            self.agent.train_round += 1
+            self.agent.train_round = self.agent.train_round%self.agent.train_every
+        else:
+            loss_list = self.stats["loss"]
+            mean_loss = pd.Series(loss_list).rolling(window=len(loss_list), min_periods=1).mean().tolist()
+            last_100_mean_loss = mean_loss[(len(mean_loss)-100):]
+            delta = max(last_100_mean_loss) - min(last_100_mean_loss)
+            if len(loss_list) > 100 and delta < self.agent.stable_treshold:
+                self.agent.stable = True
