@@ -1,7 +1,6 @@
 *.pyc
 *__py
 config.ini
-spec.yml
 env/
 stats.txt
 resptimes.csv

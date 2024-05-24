@@ -1,0 +1,87 @@
+classes:
+  - name: standard
+    max_resp_time: 0.500
+    utility: 0.01
+    arrival_weight: 0.7
+  - name: critical-1
+    max_resp_time: 0.500
+    utility: 1.0
+    arrival_weight: 0.1
+  - name: critical-2
+    max_resp_time: 0.500
+    utility: 1.0
+    deadline_penalty: 0.75
+    drop_penalty: 0.75
+    arrival_weight: 0.1
+  - name: batch
+    max_resp_time: 10000.0
+    utility: 1.0
+    arrival_weight: 0.1
+nodes:
+  - name: edge1
+    region: edge
+    memory: 1024
+    policy: dqn
+  - name: edge2
+    region: edge
+    memory: 2048
+    policy: basic
+  - name: edge3
+    region: edge
+    memory: 2048
+    policy: basic
+  - name: edge4
+    region: edge
+    memory: 2048
+    policy: basic
+  - name: edge5
+    region: edge
+    memory: 2048
+    policy: basic
+  - name: cloud1
+    region: cloud
+    cost: 0.00005
+    speedup: 1.0
+    memory: 128000
+functions:
+  - name: f1
+    memory: 512
+    duration_mean: 0.4
+    duration_scv: 1.0
+    init_mean: 0.5
+  - name: f2
+    memory: 512
+    duration_mean: 0.2
+    duration_scv: 1.0
+    init_mean: 0.25
+  - name: f3
+    memory: 128
+    duration_mean: 0.3
+    duration_scv: 1.0
+    init_mean: 0.6
+  - name: f4
+    memory: 1024
+    duration_mean: 0.25
+    duration_scv: 1.0
+    init_mean: 0.25
+  - name: f5
+    memory: 256
+    duration_mean: 0.45
+    duration_scv: 1.0
+    init_mean: 0.5
+arrivals:
+  - node: edge1
+    function: f1
+    rate: 0.8
+  - node: edge1
+    function: f2
+    rate: 1.6
+  - node: edge1
+    function: f3
+    rate: 4.2
+  - node: edge1
+    function: f4
+    rate: 0.6
+  - node: edge1
+    function: f5
+    rate: 1.4

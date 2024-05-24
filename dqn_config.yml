@@ -1,6 +1,6 @@
 nodes:
   - name: edge1
-    state_size: 11
+    state_size: 12
     action_size: 4
     gamma: 0.95
     epsilon: 1.0

@@ -4,6 +4,7 @@ import numpy as np
 import random
 import pandas as pd
 import yaml
+import scipy.stats as stats
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
@@ -119,6 +120,8 @@ class DQN(Policy):
 
         self.how_many_offload_allowed = 3
 
+        self.cost_normalization_factor = self.get_cost_normalization_factor()
+
         self.stats = {
             "SchedulerDecision.EXEC": [0],
             "SchedulerDecision.OFFLOAD_CLOUD": [0],
@@ -127,9 +130,10 @@ class DQN(Policy):
             
             "reward": [0],
 
-            "critical" : [0,0,0,0],
-            "best-effort" : [0,0,0,0],
-            "deferrable" : [0,0,0,0],
+            "standard" : [0,0,0,0],
+            "critical-1" : [0,0,0,0],
+            "critical-2" : [0,0,0,0],
+            "batch" : [0,0,0,0],
 
             "loss": [0],
 
@@ -137,16 +141,27 @@ class DQN(Policy):
             "OFFLOAD_CLOUD": [0,0],
             "OFFLOAD_EDGE": [0,0],
 
-            "critical_reward" : [0,0,0],
-            "best-effort_reward" : [0,0,0],
-            "deferrable_reward" : [0,0,0],
+            "standard_reward" : [0,0,0],
+            "critical-1_reward" : [0,0,0],
+            "critical-2_reward" : [0,0,0],
+            "batch_reward" : [0,0,0],
 
             "reward_cost": [0],
+            "cost": [0],
         }
 
         self.time = 0
         self.periodic_stats = 360
 
+
+    def get_cost_normalization_factor(self):
+        cost_per_function = []
+        for f in self.simulation.functions:
+            percentile = stats.gamma.ppf(0.9999, 1.0/f.serviceSCV, scale=f.serviceMean*f.serviceSCV/self.cloud.speedup)
+            # prendo il 50% in più per stare più tranquillo
+            higher_percentile = percentile * 1.5
+            cost_per_function.append(higher_percentile * f.memory/1024 * self.cloud.cost)
+        return max(cost_per_function)
 
     def schedule(self, e):
 
@@ -221,16 +236,13 @@ class DQN(Policy):
         available_memory = event.node.total_memory * state[0]
         can_execute_locally = True if event.function in event.node.warm_pool or available_memory >= event.function.memory else False
         can_execute_on_edge = state[1] and (len(event.offloaded_from) < self.how_many_offload_allowed)
-        can_execute_on_cloud = state[2] and (len(event.offloaded_from) < self.how_many_offload_allowed)
+        #can_execute_on_cloud = state[2] and (len(event.offloaded_from) < self.how_many_offload_allowed)
         if not can_execute_locally:
             actions[0] = False
-        if not can_execute_on_cloud:
-            actions[1] = False
+        # if not can_execute_on_cloud:
+        #     actions[1] = False
         if not can_execute_on_edge:
             actions[2] = False
-        # se c'è almeno 1 soluzione, disabilita il drop
-        # if any(actions[:3]):
-        #     actions[3] = False
         return actions
 
 
@@ -250,8 +262,8 @@ class DQN(Policy):
         class_one_hot = [0] * len(self.simulation.classes)
         class_one_hot[class_index] = 1
         has_been_offloaded = bool(e.offloaded_from)
-        arrival_time = e.original_arrival_time if e.original_arrival_time is not None else self.simulation.t
-        return [perc_av_loc_mem, can_execute_on_edge, can_execute_on_cloud] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
+        #return [perc_av_loc_mem, can_execute_on_edge, can_execute_on_cloud] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
+        return [perc_av_loc_mem, can_execute_on_edge] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
 
 
     # Seleziona tra i nodi edge disponibili all'offload, uno random tra quelli con speedup maggiore 
@@ -319,15 +331,17 @@ class DQN(Policy):
                 print("[{:.2f}]".format(self.simulation.t), event.node,"OFFLOAD completed :",reward)
 
         self.stats["reward"].append(reward)
+        
+        self.stats["cost"].append(cost)
 
-        # considerando un costo medio di 0,002121561004, ho deciso di moltiplicarlo per 100
-        cost = cost * 100
+        # normalizzo il costo
+        nomalized_cost = cost / self.cost_normalization_factor
 
         # pesi rispettivamente per utility/penalty e cost
-        w1 = 0.3
+        w1 = 0.5
         w2 = 1 - w1
 
-        reward = w1 * reward - w2 * cost
+        reward = w1 * reward - w2 * nomalized_cost
 
         self.stats["reward_cost"].append(reward)
 
