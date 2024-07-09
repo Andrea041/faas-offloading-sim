@@ -12,12 +12,9 @@ import utils.plot
 from policy import SchedulerDecision, CloudPolicy
 import policy
 import probabilistic
-import ppo
-from ppo import PPO, SHOW_PRINTS, TRAIN
-import actor_critic
-from actor_critic import Actor_Critic, SHOW_PRINTS, TRAIN
-import dqn
-from dqn import DQN, SHOW_PRINTS, TRAIN
+from reinforcement_learning import RL, SHOW_PRINTS, TRAIN
+from ppo import PPO
+from dqn import DQN
 from faas import *
 import stateful
 from stateful import key_locator
@@ -172,12 +169,8 @@ class Simulation:
             return stateful.StateAwareOffloadingPolicy(self, node)
         elif configured_policy == "state-aware-always-offload":
             return stateful.AlwaysOffloadStatefulPolicy(self, node)
-        elif configured_policy == "dqn":
-            return DQN(self, node)
-        elif configured_policy == "actor-critic":
-            return Actor_Critic(self, node)
-        elif configured_policy == "ppo":
-            return PPO(self, node)
+        elif configured_policy == "dqn" or configured_policy == "ppo":
+            return RL(self, node, configured_policy)
         else:
             raise RuntimeError(f"Unknown policy: {configured_policy}")
 
@@ -474,7 +467,7 @@ class Simulation:
             self.stats.ext_arrivals[(f,c,n)] += 1
 
         # Policy
-        if isinstance(node_policy, DQN) or isinstance(node_policy, Actor_Critic) or isinstance(node_policy, PPO):
+        if isinstance(node_policy, RL):
             sched_decision, target_node = node_policy.schedule(event)
         else:
             sched_decision, target_node = node_policy.schedule(f,c,event.offloaded_from)
@@ -495,7 +488,7 @@ class Simulation:
             self.schedule(float(self.t + init_time + duration), Completion(arrival_time, f,c, n, init_time > 0, duration, event.offloaded_from, data_access_time))
             tot_duration = float(self.t + init_time + duration - arrival_time)
             cost = duration * f.memory/1024 * n.cost
-            if isinstance(node_policy, DQN) or isinstance(node_policy, Actor_Critic) or isinstance(node_policy, PPO):
+            if isinstance(node_policy, RL):
                 reward = node_policy.get_reward(sched_decision, event, tot_duration, cost)
             if bool(event.offloaded_from):
                 if SHOW_PRINTS:
@@ -512,7 +505,7 @@ class Simulation:
             self.stats.penalty += c.drop_penalty
             if event.offloaded_from is not None and len(event.offloaded_from) > 0:
                 self.stats.dropped_offloaded[(f,c,n)] += 1
-            if isinstance(node_policy, DQN) or isinstance(node_policy, Actor_Critic) or isinstance(node_policy, PPO):
+            if isinstance(node_policy, RL):
                 reward = node_policy.get_reward(sched_decision, event, None, 0)
             if any(isinstance(self.node2policy[original_node], DQN) for original_node in reversed(event.offloaded_from)):
                 # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
@@ -548,7 +541,7 @@ class Simulation:
                 self.stats.offloaded[(f,c,n)] += 1
                 self.do_offload(event, remote_node)  
 
-        if isinstance(node_policy, DQN) or isinstance(node_policy, Actor_Critic) or isinstance(node_policy, PPO):
+        if isinstance(node_policy, RL):
             node_policy.train()
 
         # Schedule next (if this is an external arrival)
