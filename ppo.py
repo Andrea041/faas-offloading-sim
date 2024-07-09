@@ -75,7 +75,7 @@ class PPO():
             prob_sum = np.sum(action_probs)
             if prob_sum != 1:
                 action_probs = action_probs / prob_sum
-            print(action_probs, " ", sum(action_probs))
+            print(action_probs, " ", sum(action_probs), prob_sum)
             return np.random.choice(self.action_size, p=action_probs)
 
     def learn(self):
