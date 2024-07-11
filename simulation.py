@@ -270,6 +270,11 @@ class Simulation:
                     json.dump(p.stats, file_json)
                     if TRAIN:
                         p.agent.save()
+            if isinstance(p, PPO):
+                with open("ppo_results/"+n.name+".json", "w") as file_json:
+                    json.dump(p.stats, file_json)
+                    if TRAIN:
+                        p.agent.save()
 
         if self.stats_print_interval > 0:
             self.print_periodic_stats()

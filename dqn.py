@@ -7,12 +7,9 @@ from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 
-TRAIN = True
-SHOW_PRINTS = False
-
 
 class DQN():
-    def __init__(self, node_name):
+    def __init__(self, node_name, isStable):
         node_found = False
         with open("dqn_config.yml", 'r') as file:
             config = yaml.safe_load(file)
@@ -32,7 +29,7 @@ class DQN():
                     self.epsilon_decay = node["epsilon_decay"]
                     self.learning_rate = node["learning_rate"]
                     self.batch_size = node["batch_size"]
-                    self.stable = not TRAIN     # in questo modo quando non faccio training risulta stabile
+                    self.stable = isStable
                     self.stable_treshold = node["stable_treshold"]
                     self.train_round = 0
                     self.train_every = node["train_every"]

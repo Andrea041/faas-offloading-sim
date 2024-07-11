@@ -14,7 +14,6 @@ class RL(Policy):
     Stati:
     - perc_available_local_memory (float)
     - can_execute_on_edge (boolean)
-    - can_execute_on_cloud (boolean)
     - function_id (one_hot)
     - class_id (one_hot)
     - has_been_offloaded (boolean)
@@ -32,9 +31,9 @@ class RL(Policy):
         self.possible_decisions = list(SchedulerDecision)
 
         if policy == "dqn_config":
-            self.agent = DQN(node.name)
+            self.agent = DQN(node.name, not TRAIN)
         elif policy == "ppo":
-            self.agent = PPO(node.name)
+            self.agent = PPO(node.name, not TRAIN)
         else:
             print("[{:.2f}]".format(self.t), "ERRORE: Unknown policy specified for RL!")
             exit(1)
@@ -87,6 +86,7 @@ class RL(Policy):
             cost_per_function.append(higher_percentile * f.memory/1024 * self.cloud.cost)
         return max(cost_per_function)
 
+
     def schedule(self, e):
 
         if not SHOW_PRINTS and self.simulation.t - self.time > 0:
@@ -96,7 +96,7 @@ class RL(Policy):
         f = e.function
         c = e.qos_class
 
-        # recupero lo stato ed un eventuale miglior nodo edge su cui fare l'offload e scelgo l'azione
+        # recupero lo stato ed un eventuale miglior nodo edge su cui fare l'offload
         state, best_edge_node = self.get_state(e)
         np_state = np.array(state)
         np_state = np_state.reshape((1, len(state)))
@@ -160,11 +160,8 @@ class RL(Policy):
         available_memory = event.node.total_memory * state[0]
         can_execute_locally = True if event.function in event.node.warm_pool or available_memory >= event.function.memory else False
         can_execute_on_edge = state[1] and (len(event.offloaded_from) < self.how_many_offload_allowed)
-        #can_execute_on_cloud = state[2] and (len(event.offloaded_from) < self.how_many_offload_allowed)
         if not can_execute_locally:
             actions[0] = False
-        # if not can_execute_on_cloud:
-        #     actions[1] = False
         if not can_execute_on_edge:
             actions[2] = False
         return actions
@@ -177,8 +174,6 @@ class RL(Policy):
         perc_av_loc_mem = available_local_memory / e.node.total_memory
         best_edge_node = self.get_best_edge_node(f.memory, e.offloaded_from)
         can_execute_on_edge = True if best_edge_node is not None else False
-        # ASSUMO CHE CI SIA SEMPRE ALMENO 1 NODO CLOUD E CHE IL CLOUD ABBIA RISORSE DISPONIBILI
-        can_execute_on_cloud = self.simulation.stats.cost / self.simulation.t * 3600 < self.budget
         function_index = self.simulation.functions.index(f)
         function_one_hot = [0] * len(self.simulation.functions)
         function_one_hot[function_index] = 1
@@ -186,7 +181,6 @@ class RL(Policy):
         class_one_hot = [0] * len(self.simulation.classes)
         class_one_hot[class_index] = 1
         has_been_offloaded = bool(e.offloaded_from)
-        #return [perc_av_loc_mem, can_execute_on_edge, can_execute_on_cloud] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
         return [perc_av_loc_mem, can_execute_on_edge] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
 
 
