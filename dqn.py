@@ -7,9 +7,11 @@ from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 
+TRAIN = None
 
 class DQN():
     def __init__(self, node_name, isStable):
+        TRAIN = not isStable
         node_found = False
         with open("dqn_config.yml", 'r') as file:
             config = yaml.safe_load(file)

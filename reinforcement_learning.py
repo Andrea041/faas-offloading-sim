@@ -30,7 +30,7 @@ class RL(Policy):
 
         self.possible_decisions = list(SchedulerDecision)
 
-        if policy == "dqn_config":
+        if policy == "dqn":
             self.agent = DQN(node.name, not TRAIN)
         elif policy == "ppo":
             self.agent = PPO(node.name, not TRAIN)

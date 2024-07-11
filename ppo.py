@@ -171,7 +171,7 @@ class PPO():
         self.policy_model.optimizer.apply_gradients(zip(grads[:len(self.policy_model.trainable_variables)], self.policy_model.trainable_variables))
         self.value_optimizer.apply_gradients(zip(grads[len(self.policy_model.trainable_variables):], self.value_model.trainable_variables))
         
-        return total_loss.numpy()
+        return float(total_loss.numpy())
 
     def get_advantages(self, rewards, next_states):
         values = self.value_model.predict(next_states, verbose=0)
@@ -189,10 +189,10 @@ class PPO():
 
 
     def save(self):
-        save_model(self.policy_model, "dqn_results/policy_model.keras")
-        save_model(self.value_model, "dqn_results/value_model.keras")
+        save_model(self.policy_model, "ppo_results/policy_model.keras")
+        save_model(self.value_model, "ppo_results/value_model.keras")
         print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
 
     def load(self):
-        self.policy_model = load_model("dqn_results/policy_model.keras")
-        self.value_model = load_model("dqn_results/value_model.keras")
+        self.policy_model = load_model("ppo_results/policy_model.keras")
+        self.value_model = load_model("ppo_results/value_model.keras")
