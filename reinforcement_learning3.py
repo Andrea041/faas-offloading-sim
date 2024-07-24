@@ -118,6 +118,10 @@ class RL(Policy):
                         val = self.agent.pending_memory.pop(key)
                         self.agent.memory.append(tuple(val))
                     break
+                elif len(value) == 5:
+                    # sposto l'esperienza completa dalla 'pending_memory' alla 'memory'
+                    val = self.agent.pending_memory.pop(key)
+                    self.agent.memory.append(tuple(val))
 
         if action_filter.count(True) == 1:
             # se c'è una sola azione azione possibile, prendi quella
@@ -271,9 +275,14 @@ class RL(Policy):
         else:
             # se già ci sono 'next_state' & 'next_allowed_actions'
             self.agent.pending_memory[arrival_time].insert(2,reward)
-            # sposto l'esperienza completa dalla 'pending_memory' alla 'memory'
-            val = self.agent.pending_memory.pop(arrival_time)
-            self.agent.memory.append(tuple(val))
+
+        for key, value in self.agent.pending_memory.copy().items():
+            if len(value) == 5:
+                # sposto l'esperienza completa dalla 'pending_memory' alla 'memory'
+                val = self.agent.pending_memory.pop(key)
+                self.agent.memory.append(tuple(val))
+            else:
+                break
 
 
     def train(self):
@@ -297,4 +306,5 @@ class RL(Policy):
         if isinstance(self.agent, PPO):
             if TRAIN and len(self.agent.memory) >= self.agent.batch_size:
                 loss = self.agent.learn()
-                self.stats["loss"].append(np.mean(loss))
+                # self.stats["loss"].append(np.mean(loss))
+                self.stats["loss"].append(loss)

@@ -12,7 +12,7 @@ import utils.plot
 from policy import SchedulerDecision, CloudPolicy
 import policy
 import probabilistic
-from reinforcement_learning import RL, SHOW_PRINTS, TRAIN
+from reinforcement_learning3 import RL, SHOW_PRINTS, TRAIN
 from ppo import PPO
 from dqn import DQN
 from faas import *
@@ -284,7 +284,8 @@ class Simulation:
                 self.stats_file.close()
                 #self.stats.print(sys.stdout)
         elif self.config.getboolean(conf.SEC_SIM, conf.PRINT_FINAL_STATS, fallback=True):
-            self.stats.print(sys.stdout)
+            # self.stats.print(sys.stdout)
+            pass
         else:
             print(self.stats.utility - self.stats.penalty)
 
@@ -456,7 +457,7 @@ class Simulation:
         remote_arv.original_arrival_time = self.t
 
         remote_arv.t_waiting_for_reward = arrival.t_waiting_for_reward
-        if isinstance(self.node2policy[arrival.node], DQN):
+        if isinstance(self.node2policy[arrival.node], RL):
             remote_arv.t_waiting_for_reward.append(self.t)
 
         self.schedule(self.t + latency + OFFLOADING_OVERHEAD + transfer_time, remote_arv)
@@ -501,8 +502,8 @@ class Simulation:
                     print("[{:.2f}]".format(self.t), n.name, "EXEC for", event.offloaded_from)
                 for original_node in reversed(event.offloaded_from):
                     original_node_policy = self.node2policy[original_node]
-                    # se era stato fatto l'offload da almeno un nodo DQN propago i reward
-                    if isinstance(original_node_policy, DQN):
+                    # se era stato fatto l'offload da almeno un nodo RL propago i reward
+                    if isinstance(original_node_policy, RL):
                         pending_event = original_node_policy.pending_events.pop(event.t_waiting_for_reward[-1])
                         original_node_policy.get_reward(pending_event[1], pending_event[2], tot_duration, cost)
                         event.t_waiting_for_reward.pop()
@@ -513,7 +514,7 @@ class Simulation:
                 self.stats.dropped_offloaded[(f,c,n)] += 1
             if isinstance(node_policy, RL):
                 reward = node_policy.get_reward(sched_decision, event, None, 0)
-            if any(isinstance(self.node2policy[original_node], DQN) for original_node in reversed(event.offloaded_from)):
+            if any(isinstance(self.node2policy[original_node], RL) for original_node in reversed(event.offloaded_from)):
                 # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
                 print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
                 exit(1)

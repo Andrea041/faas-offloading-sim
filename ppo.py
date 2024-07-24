@@ -9,7 +9,7 @@ from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 
 class PPO():
-    def __init__(self, node_name, isStable):
+    def __init__(self, node_name):
         node_found = False
         with open("dqn_config.yml", 'r') as file:
             config = yaml.safe_load(file)
@@ -25,11 +25,7 @@ class PPO():
                     self.pending_memory = {}
                     self.gamma = node["gamma"]
                     self.learning_rate = node["learning_rate"]
-                    self.batch_size = node["batch_size"]
-                    self.stable = isStable
-                    self.stable_treshold = node["stable_treshold"]
-                    self.train_round = 0
-                    self.train_every = node["train_every"]
+                    self.batch_size = 32
                     
                     self.clip_ratio = 0.2
                     self.epochs = 10
@@ -43,6 +39,7 @@ class PPO():
         if not node_found:
             print("ERROR: node '" + node_name + "' not found in 'dqn_config.yml'!")
             exit(1)
+
 
     def _build_model(self):
         policy_model = Sequential()
@@ -62,116 +59,71 @@ class PPO():
         
         return policy_model, value_model
 
+
     def act(self, state, action_filter):
         action_probs = self.policy_model.predict(state, verbose=0)[0]
         action_probs = action_probs * np.array(action_filter).astype(int)
         prob_sum = np.sum(action_probs)
-        if prob_sum == 0 or np.isnan(prob_sum):
-            print("0 or NaN")
+        if prob_sum == 0:
             return 3    # DROP
-        elif prob_sum != 1:
-            action_probs = action_probs / prob_sum
+        action_probs /= prob_sum    # normalizzo
         return np.random.choice(self.action_size, p=action_probs)
 
-    # def learn(self):
-    #     minibatch = random.sample(self.memory, self.batch_size)
-
-    #     states = np.squeeze(np.array([item[0] for item in minibatch]), axis=1)
-    #     actions = np.array([item[1] for item in minibatch])
-    #     rewards = np.array([item[2] for item in minibatch])
-    #     next_states = np.squeeze(np.array([item[3] for item in minibatch]), axis=1)
-
-    #     advantages, returns = self.get_advantages(rewards, next_states)
-        
-    #     actions_one_hot = tf.keras.utils.to_categorical(actions, self.action_size)
-        
-    #     with tf.GradientTape() as tape:
-    #         old_probs = self.policy_model.predict(states, verbose=0)
-    #         new_probs = self.policy_model(states, training=True)
-            
-    #         old_probs = tf.convert_to_tensor(old_probs, dtype=tf.float32)
-    #         new_probs = tf.convert_to_tensor(new_probs, dtype=tf.float32)
-            
-    #         old_probs = tf.reduce_sum(actions_one_hot * old_probs, axis=1)
-    #         new_probs = tf.reduce_sum(actions_one_hot * new_probs, axis=1)
-            
-    #         ratio = tf.exp(tf.math.log(new_probs) - tf.math.log(old_probs))
-    #         clipped_ratio = tf.clip_by_value(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio)
-            
-    #         surrogate1 = ratio * advantages
-    #         surrogate2 = clipped_ratio * advantages
-            
-    #         policy_loss = -tf.reduce_mean(tf.minimum(surrogate1, surrogate2))
-    #         value_loss = tf.reduce_mean((returns - self.value_model(states, training=True)) ** 2)
-    #         total_loss = policy_loss + value_loss
-        
-    #     grads = tape.gradient(total_loss, self.policy_model.trainable_variables + self.value_model.trainable_variables)
-    #     self.policy_model.optimizer.apply_gradients(zip(grads[:len(self.policy_model.trainable_variables)], self.policy_model.trainable_variables))
-    #     self.value_model.optimizer.apply_gradients(zip(grads[len(self.policy_model.trainable_variables):], self.value_model.trainable_variables))
-        
-    #     return total_loss.numpy()
 
     def learn(self):
-        minibatch = random.sample(self.memory, self.batch_size)
-
-        states = np.squeeze(np.array([item[0] for item in minibatch]), axis=1)
-        actions = np.array([item[1] for item in minibatch])
-        rewards = np.array([item[2] for item in minibatch])
-        next_states = np.squeeze(np.array([item[3] for item in minibatch]), axis=1)
+        states = np.squeeze(np.array([item[0] for item in self.memory]), axis=1)
+        actions = np.array([item[1] for item in self.memory])
+        rewards = np.array([item[2] for item in self.memory])
+        next_states = np.squeeze(np.array([item[3] for item in self.memory]), axis=1)
 
         advantages, returns = self.get_advantages(rewards, next_states)
         
         actions_one_hot = tf.keras.utils.to_categorical(actions, self.action_size)
         
-        with tf.GradientTape() as tape:
-            old_probs = self.policy_model.predict(states, verbose=0)
-            new_probs = self.policy_model(states, training=True)
+        for _ in range(self.epochs):
+            with tf.GradientTape(persistent=True) as tape:
+                old_probs = self.policy_model(states, training=False)
+                new_probs = self.policy_model(states, training=True)
+                
+                old_probs = tf.reduce_sum(actions_one_hot * old_probs, axis=1)
+                new_probs = tf.reduce_sum(actions_one_hot * new_probs, axis=1)
+                
+                # 1e−10 previene problemi numerici legati ai logaritmi di 0 e alle divisioni per 0:
+                #   - se 'new_probs' o 'old_probs' sono 0, l'operazione tf.math.log produrrà un errore o un valore infinito.
+                #   - se 'old_probs' è 0, si verificherà una divisione per zero.
+                ratio = tf.exp(tf.math.log(new_probs + 1e-10) - tf.math.log(old_probs + 1e-10))
+                clipped_ratio = tf.clip_by_value(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio)
+                
+                surrogate1 = ratio * advantages             # prodotto del rapporto non clippato con i vantaggi
+                surrogate2 = clipped_ratio * advantages     # prodotto del rapporto clippato con i vantaggi
+                
+                policy_loss = -tf.reduce_mean(tf.minimum(surrogate1, surrogate2))
+                value_loss = tf.reduce_mean((returns - self.value_model(states, training=True)) ** 2)
             
-            old_probs = tf.convert_to_tensor(old_probs, dtype=tf.float32)
-            new_probs = tf.convert_to_tensor(new_probs, dtype=tf.float32)
-            
-            old_probs = tf.reduce_sum(actions_one_hot * old_probs, axis=1)
-            new_probs = tf.reduce_sum(actions_one_hot * new_probs, axis=1)
-            
-            # Verifica i NaN nelle probabilità
-            tf.debugging.check_numerics(old_probs, message='Old_probs NaN Found')
-            tf.debugging.check_numerics(new_probs, message='New_probs NaN Found')
-            
-            ratio = tf.exp(tf.math.log(new_probs + 1e-10) - tf.math.log(old_probs + 1e-10))
-            clipped_ratio = tf.clip_by_value(ratio, 1 - self.clip_ratio, 1 + self.clip_ratio)
-            
-            surrogate1 = ratio * advantages
-            surrogate2 = clipped_ratio * advantages
-            
-            policy_loss = -tf.reduce_mean(tf.minimum(surrogate1, surrogate2))
-            value_loss = tf.reduce_mean((returns - self.value_model(states, training=True)) ** 2)
-            total_loss = policy_loss + value_loss
-            
-            # Verifica i NaN nelle perdite
-            tf.debugging.check_numerics(policy_loss, message='Policy_loss NaN Found')
-            tf.debugging.check_numerics(value_loss, message='Value_loss NaN Found')
-            tf.debugging.check_numerics(total_loss, message='Total_loss NaN Found')
-        
-        grads = tape.gradient(total_loss, self.policy_model.trainable_variables + self.value_model.trainable_variables)
-        
-        # Verifica i NaN nei gradienti
-        #tf.debugging.check_numerics(grads, message='Grads NaN Found')
-        
-        # Calcola la norma dei gradienti
-        gradients_norm = tf.linalg.global_norm(grads)
-        print(f'{self.stable} | Gradient Norm: {gradients_norm.numpy()}')
+            policy_grads = tape.gradient(policy_loss, self.policy_model.trainable_variables)
+            value_grads = tape.gradient(value_loss, self.value_model.trainable_variables)
 
-        # Controlla per gradienti esplosivi
-        if gradients_norm > 100:  # Soglia di esempio, può essere adattata
-            print("Warning: Exploding gradients detected!")
+            # Gradient Clipping
+            policy_grads, _ = tf.clip_by_global_norm(policy_grads, 1.0)
+            value_grads, _ = tf.clip_by_global_norm(value_grads, 1.0)
 
-        # Gradient Clipping
-        grads, _ = tf.clip_by_global_norm(grads, 1.0)
+            self.policy_optimizer.apply_gradients(zip(policy_grads, self.policy_model.trainable_variables))
+            self.value_optimizer.apply_gradients(zip(value_grads, self.value_model.trainable_variables))
         
-        self.policy_model.optimizer.apply_gradients(zip(grads[:len(self.policy_model.trainable_variables)], self.policy_model.trainable_variables))
-        self.value_optimizer.apply_gradients(zip(grads[len(self.policy_model.trainable_variables):], self.value_model.trainable_variables))
+        self.memory = []
+
+        # grads = tape.gradient(total_loss, self.policy_model.trainable_variables + self.value_model.trainable_variables)
+
+        # # Gradient Clipping
+        # grads, _ = tf.clip_by_global_norm(grads, 1.0)
         
-        return float(total_loss.numpy())
+        # self.policy_model.optimizer.apply_gradients(zip(grads[:len(self.policy_model.trainable_variables)], self.policy_model.trainable_variables))
+        # self.value_optimizer.apply_gradients(zip(grads[len(self.policy_model.trainable_variables):], self.value_model.trainable_variables))
+        
+        # self.memory = []
+
+        return [float(policy_loss.numpy()), float(value_loss.numpy())]
+
 
     def get_advantages(self, rewards, next_states):
         values = self.value_model.predict(next_states, verbose=0)
@@ -192,6 +144,7 @@ class PPO():
         save_model(self.policy_model, "ppo_results/policy_model.keras")
         save_model(self.value_model, "ppo_results/value_model.keras")
         print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
+
 
     def load(self):
         self.policy_model = load_model("ppo_results/policy_model.keras")
