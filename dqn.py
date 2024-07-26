@@ -3,15 +3,22 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import random
 import yaml
+import math
+from collections import deque
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 
+import pickle
+
+
 TRAIN = None
 
 class DQN():
-    def __init__(self, node_name, isStable):
+    def __init__(self, node_name, isStable, close_the_door_time):
+        global TRAIN
         TRAIN = not isStable
+        self.close_the_door_time = close_the_door_time
         node_found = False
         with open("dqn_config.yml", 'r') as file:
             config = yaml.safe_load(file)
@@ -21,6 +28,7 @@ class DQN():
                     self.action_size = node["action_size"]
                     # [(state, action, reward, next_state, next_allowed_actions)]
                     self.memory = []
+                    self.memory = deque(maxlen=10000)
                     # dizionario {event:[state,action]} in attesa di:
                     #   - next_state & next_allowed_actions
                     #   - reward
@@ -29,6 +37,7 @@ class DQN():
                     self.epsilon = node["epsilon"]
                     self.epsilon_min = node["epsilon_min"]
                     self.epsilon_decay = node["epsilon_decay"]
+                    self.fraction_of_decay = node["fraction_of_decay"]
                     self.learning_rate = node["learning_rate"]
                     self.batch_size = node["batch_size"]
                     self.stable = isStable
@@ -54,13 +63,36 @@ class DQN():
     def act(self, state, action_filter):
         allowed_actions = [i for i, value in enumerate(action_filter) if value]
         if TRAIN and np.random.rand() <= self.epsilon:
-            return random.choice(allowed_actions)
+            return random.choice(allowed_actions), True
         act_values = self.model.predict(state, verbose=0)[0].tolist()
         for val in sorted(act_values, reverse=True):
             if act_values.index(val) in allowed_actions:
-                return act_values.index(val)
+                return act_values.index(val), False
 
-    def learn(self):
+    def act_test(self):
+        state_action = []
+        for m in self.memory:
+            state = m[0]
+            act_values = self.model.predict(state, verbose=0)[0].tolist()
+            state_action.append([state,act_values.index(max(act_values))])
+        with open('dqn_results/state_action.pkl', 'wb') as file:
+            pickle.dump(state_action, file)
+
+    def act_verify(self):
+        count = 0
+        with open('dqn_results/state_action.pkl', 'rb') as file:
+            state_action = pickle.load(file)
+            for i in range(len(state_action)):
+                act_values = self.model.predict(state_action[i][0], verbose=0)[0].tolist()
+                action = act_values.index(max(act_values))
+                old_action = state_action[i][1]
+                if action != old_action:
+                    count += 1
+                    print(i, ":", action, "vs", old_action)
+        print("DIFFERENCES:",count)
+
+
+    def learn(self, time):
         loss = []
         minibatch = random.sample(self.memory, self.batch_size)
         for state, action, reward, next_state, next_allowed_actions in minibatch:
@@ -76,12 +108,23 @@ class DQN():
             history = self.model.fit(state, target_f, epochs=1, verbose=0)
             loss.append(history.history['loss'][0])
         if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+            if self.fraction_of_decay > 0:
+                self.epsilon = self.exponential_decay(time)
+            else:
+                self.epsilon *= self.epsilon_decay
         return loss
+
+
+    def exponential_decay(self, now):
+        alpha = -math.log(self.epsilon_min) / (self.close_the_door_time * self.fraction_of_decay)
+        new_value = math.exp(-alpha * now)
+        return new_value
+
 
     def save(self):
         save_model(self.model, "dqn_results/model.keras")
         print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
+
 
     def load(self):
         self.model = load_model("dqn_results/model.keras")

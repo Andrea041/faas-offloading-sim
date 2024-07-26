@@ -12,8 +12,7 @@ import utils.plot
 from policy import SchedulerDecision, CloudPolicy
 import policy
 import probabilistic
-from reinforcement_learning3 import RL, SHOW_PRINTS, TRAIN
-from ppo import PPO
+from reinforcement_learning import RL, SHOW_PRINTS, TRAIN
 from dqn import DQN
 from faas import *
 import stateful
@@ -169,8 +168,8 @@ class Simulation:
             return stateful.StateAwareOffloadingPolicy(self, node)
         elif configured_policy == "state-aware-always-offload":
             return stateful.AlwaysOffloadStatefulPolicy(self, node)
-        elif configured_policy == "dqn" or configured_policy == "ppo":
-            return RL(self, node, configured_policy)
+        elif configured_policy == "dqn":
+            return RL(self, node, configured_policy, self.close_the_door_time)
         else:
             raise RuntimeError(f"Unknown policy: {configured_policy}")
 
@@ -263,19 +262,27 @@ class Simulation:
             t,e = heappop(self.events)
             self.handle(t, e)
 
+        print()
+        print("###  DA RIMUOVERE:")
+        print("###      -   265-275 in simulation.py")
+        print("###      -   90-92 in reinforcement_learning.py")
+        print("###      -   explore in reinforcement_learning.py")
+        print("###      -   pickle in dqn.py")
+        print("###      -   act_test in dqn.py")
+        print("###      -   act_verify in dqn.py")
+        print("###      -   explore da act in dqn.py")
+        print()
+        for n,p in self.node2policy.items():
+            if isinstance(p, RL):
+                p.agent.act_test()
+
         # save json stats
         for n,p in self.node2policy.items():
             if isinstance(p, RL):
-                if isinstance(p.agent, DQN):
-                    with open("dqn_results/"+n.name+".json", "w") as file_json:
-                        json.dump(p.stats, file_json)
-                        if TRAIN:
-                            p.agent.save()
-                if isinstance(p.agent, PPO):
-                    with open("ppo_results/"+n.name+".json", "w") as file_json:
-                        json.dump(p.stats, file_json)
-                        if TRAIN:
-                            p.agent.save()
+                with open("dqn_results/"+n.name+".json", "w") as file_json:
+                    json.dump(p.stats, file_json)
+                    if TRAIN:
+                        p.agent.save()
 
         if self.stats_print_interval > 0:
             self.print_periodic_stats()

@@ -21,7 +21,7 @@ nodes:
   - name: edge1
     region: edge
     memory: 1024
-    policy: ppo
+    policy: dqn
   - name: edge2
     region: edge
     memory: 2048

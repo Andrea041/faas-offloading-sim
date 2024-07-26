@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import scipy.stats as stats
 from policy import Policy, SchedulerDecision
-from ppo import PPO
 from dqn import DQN
 
 TRAIN = True
@@ -18,7 +17,7 @@ class RL(Policy):
     - class_id (one_hot)
     - has_been_offloaded (boolean)
     '''
-    def __init__(self, simulation, node, policy):
+    def __init__(self, simulation, node, policy, close_the_door_time):
         super().__init__(simulation, node)
 
         cloud_region = node.region.default_cloud
@@ -31,9 +30,7 @@ class RL(Policy):
         self.possible_decisions = list(SchedulerDecision)
 
         if policy == "dqn":
-            self.agent = DQN(node.name, not TRAIN)
-        elif policy == "ppo":
-            self.agent = PPO(node.name)
+            self.agent = DQN(node.name, not TRAIN, close_the_door_time)
         else:
             print("[{:.2f}]".format(self.t), "ERRORE: Unknown policy specified for RL!")
             exit(1)
@@ -71,10 +68,21 @@ class RL(Policy):
 
             "reward_cost": [0],
             "cost": [0],
+
+            "epsilon": [0],
+
+            "ExploreSchedulerDecision.EXEC": [0],
+            "ExploreSchedulerDecision.OFFLOAD_CLOUD": [0],
+            "ExploreSchedulerDecision.OFFLOAD_EDGE": [0],
+            "ExploreSchedulerDecision.DROP": [0],
+
+            "ExploitSchedulerDecision.EXEC": [0],
+            "ExploitSchedulerDecision.OFFLOAD_CLOUD": [0],
+            "ExploitSchedulerDecision.OFFLOAD_EDGE": [0],
+            "ExploitSchedulerDecision.DROP": [0],
         }
 
         self.time = 0
-        self.periodic_stats = 360
 
 
     def get_cost_normalization_factor(self):
@@ -89,9 +97,14 @@ class RL(Policy):
 
     def schedule(self, e):
 
+        if not TRAIN:
+            self.agent.act_verify()
+            exit(0)
+
         if not SHOW_PRINTS and self.simulation.t - self.time > 0:
             print("[{:.2f}]".format(self.simulation.t))
             self.time += 10
+            self.stats["epsilon"].append(self.agent.epsilon)
 
         f = e.function
         c = e.qos_class
@@ -119,12 +132,14 @@ class RL(Policy):
                         self.agent.memory.append(tuple(val))
                     break
 
+        explore = False
+
         if action_filter.count(True) == 1:
             # se c'è una sola azione azione possibile, prendi quella
             action = action_filter.index(True)
         else:
             # altrimenti sceglila tra quelle possibili
-            action = self.agent.act(np_state,action_filter)
+            action, explore = self.agent.act(np_state,action_filter)
         action = self.possible_decisions[action]
         
         # se la decisione è EXEC eseguo 'can_execute_locally' nel caso servisse la 'reclaim_memory'
@@ -147,6 +162,10 @@ class RL(Policy):
 
         arrival_time = e.original_arrival_time if e.original_arrival_time is not None else self.simulation.t
         self.stats[str(action)].append(arrival_time)
+        if explore:
+            self.stats["Explore"+str(action)].append(arrival_time)
+        else:
+            self.stats["Exploit"+str(action)].append(arrival_time)
         self.stats[c.name][self.possible_decisions.index(action)] += 1
 
         # aggiungo l'elemento {event:[state,action]} al 'pending_memory'
@@ -277,24 +296,17 @@ class RL(Policy):
 
 
     def train(self):
-        if isinstance(self.agent, DQN):
-            if TRAIN and len(self.agent.memory) >= self.agent.batch_size and (not self.agent.stable or self.agent.train_round%self.agent.train_every == 0):
-                loss = self.agent.learn()
-                self.stats["loss"].append(np.mean(loss))
+        if TRAIN and len(self.agent.memory) >= self.agent.batch_size and (not self.agent.stable or self.agent.train_round%self.agent.train_every == 0):
+            loss = self.agent.learn(self.simulation.t)
+            self.stats["loss"].append(np.mean(loss))
 
-            if self.agent.stable:
-                self.agent.train_round += 1
-                self.agent.train_round = self.agent.train_round%self.agent.train_every
-            else:
-                loss_list = self.stats["loss"]
-                mean_loss = pd.Series(loss_list).rolling(window=len(loss_list), min_periods=1).mean().tolist()
-                last_100_mean_loss = mean_loss[(len(mean_loss)-100):]
-                delta = max(last_100_mean_loss) - min(last_100_mean_loss)
-                if len(loss_list) > 100 and delta < self.agent.stable_treshold:
-                    self.agent.stable = True
-
-        # in PPO non ci serve il concetto di 'stabile' perchè aggiorniamo ogni 'batch_size' e svuotiamo la memoria
-        if isinstance(self.agent, PPO):
-            if TRAIN and len(self.agent.memory) >= self.agent.batch_size:
-                loss = self.agent.learn()
-                self.stats["loss"].append(np.mean(loss))
+        if self.agent.stable:
+            self.agent.train_round += 1
+            self.agent.train_round = self.agent.train_round%self.agent.train_every
+        else:
+            loss_list = self.stats["loss"]
+            mean_loss = pd.Series(loss_list).rolling(window=len(loss_list), min_periods=1).mean().tolist()
+            last_100_mean_loss = mean_loss[(len(mean_loss)-100):]
+            delta = max(last_100_mean_loss) - min(last_100_mean_loss)
+            if len(loss_list) > 100 and delta < self.agent.stable_treshold:
+                self.agent.stable = True
