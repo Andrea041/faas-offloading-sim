@@ -264,12 +264,7 @@ class Simulation:
 
         print()
         print("###  DA RIMUOVERE:")
-        print("###      -   265-275 in simulation.py")
-        print("###      -   90-92 in reinforcement_learning.py")
         print("###      -   explore in reinforcement_learning.py")
-        print("###      -   pickle in dqn.py")
-        print("###      -   act_test in dqn.py")
-        print("###      -   act_verify in dqn.py")
         print("###      -   explore da act in dqn.py")
         print()
         for n,p in self.node2policy.items():

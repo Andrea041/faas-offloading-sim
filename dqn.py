@@ -9,8 +9,6 @@ from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
 
-import pickle
-
 
 TRAIN = None
 
@@ -68,28 +66,6 @@ class DQN():
         for val in sorted(act_values, reverse=True):
             if act_values.index(val) in allowed_actions:
                 return act_values.index(val), False
-
-    def act_test(self):
-        state_action = []
-        for m in self.memory:
-            state = m[0]
-            act_values = self.model.predict(state, verbose=0)[0].tolist()
-            state_action.append([state,act_values.index(max(act_values))])
-        with open('dqn_results/state_action.pkl', 'wb') as file:
-            pickle.dump(state_action, file)
-
-    def act_verify(self):
-        count = 0
-        with open('dqn_results/state_action.pkl', 'rb') as file:
-            state_action = pickle.load(file)
-            for i in range(len(state_action)):
-                act_values = self.model.predict(state_action[i][0], verbose=0)[0].tolist()
-                action = act_values.index(max(act_values))
-                old_action = state_action[i][1]
-                if action != old_action:
-                    count += 1
-                    print(i, ":", action, "vs", old_action)
-        print("DIFFERENCES:",count)
 
 
     def learn(self, time):

@@ -97,10 +97,6 @@ class RL(Policy):
 
     def schedule(self, e):
 
-        if not TRAIN:
-            self.agent.act_verify()
-            exit(0)
-
         if not SHOW_PRINTS and self.simulation.t - self.time > 0:
             print("[{:.2f}]".format(self.simulation.t))
             self.time += 10
