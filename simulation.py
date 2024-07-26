@@ -262,15 +262,6 @@ class Simulation:
             t,e = heappop(self.events)
             self.handle(t, e)
 
-        print()
-        print("###  DA RIMUOVERE:")
-        print("###      -   explore in reinforcement_learning.py")
-        print("###      -   explore da act in dqn.py")
-        print()
-        for n,p in self.node2policy.items():
-            if isinstance(p, RL):
-                p.agent.act_test()
-
         # save json stats
         for n,p in self.node2policy.items():
             if isinstance(p, RL):
