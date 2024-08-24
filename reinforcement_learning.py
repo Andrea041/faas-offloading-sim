@@ -174,9 +174,12 @@ class RL(Policy):
         actions = [True]*4
         available_memory = event.node.total_memory * state[0]
         can_execute_locally = True if event.function in event.node.warm_pool or available_memory >= event.function.memory else False
+        can_execute_on_cloud = len(event.offloaded_from) < self.how_many_offload_allowed
         can_execute_on_edge = state[1] and (len(event.offloaded_from) < self.how_many_offload_allowed)
         if not can_execute_locally:
             actions[0] = False
+        if not can_execute_on_cloud:
+            actions[1] = False
         if not can_execute_on_edge:
             actions[2] = False
         return actions

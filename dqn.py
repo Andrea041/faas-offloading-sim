@@ -5,6 +5,7 @@ import random
 import yaml
 import math
 from collections import deque
+import tensorflow as tf
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
@@ -99,6 +100,9 @@ class DQN():
 
     def save(self):
         save_model(self.model, "dqn_results/model.keras")
+        self.model.export('dqn_results/model')
+        tf.saved_model.save(self.model, 'dqn_results/tf_model')
+        tf.saved_model.save(self.model, 'dqn_results/tf_model', signatures=None, options=tf.saved_model.SaveOptions(tags=['serve', 'train']))
         print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
 
 
