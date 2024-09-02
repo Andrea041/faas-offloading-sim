@@ -43,6 +43,7 @@ class DQN():
                     self.stable_treshold = node["stable_treshold"]
                     self.train_round = 0
                     self.train_every = node["train_every"]
+                    self.w1 = node["w1"]    # w2 = 1 - w1
                     self.model = self._build_model()
                     node_found = True
                     break

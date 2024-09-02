@@ -274,7 +274,7 @@ class RL(Policy):
         nomalized_cost = cost / self.cost_normalization_factor
 
         # pesi rispettivamente per utility/penalty e cost
-        w1 = 0.5
+        w1 = self.agent.w1
         w2 = 1 - w1
 
         reward = w1 * reward - w2 * nomalized_cost

@@ -11,3 +11,4 @@ nodes:
     batch_size: 8
     stable_treshold: 0.001
     train_every: 10
+    w1: 0.1
