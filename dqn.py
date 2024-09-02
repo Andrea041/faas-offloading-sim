@@ -101,8 +101,8 @@ class DQN():
     def save(self):
         save_model(self.model, "dqn_results/model.keras")
         self.model.export('dqn_results/model')
-        tf.saved_model.save(self.model, 'dqn_results/tf_model')
-        tf.saved_model.save(self.model, 'dqn_results/tf_model', signatures=None, options=tf.saved_model.SaveOptions(tags=['serve', 'train']))
+        # tf.saved_model.save(self.model, 'dqn_results/tf_model')
+        # tf.saved_model.save(self.model, 'dqn_results/tf_model', signatures=None, options=tf.saved_model.SaveOptions(tags=['serve', 'train']))
         print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
 
 
