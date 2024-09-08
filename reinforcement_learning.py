@@ -197,10 +197,12 @@ class RL(Policy):
         perc_av_loc_mem = available_local_memory / e.node.total_memory
         best_edge_node = self.get_best_edge_node(f.memory, e.offloaded_from)
         can_execute_on_edge = True if best_edge_node is not None else False
-        function_index = self.simulation.functions.sort().index(f)
+        self.simulation.functions.sort()
+        function_index = self.simulation.functions.index(f)
         function_one_hot = [0] * len(self.simulation.functions)
         function_one_hot[function_index] = 1
-        class_index = self.simulation.classes.sort().index(c)
+        self.simulation.classes.sort()
+        class_index = self.simulation.classes.index(c)
         class_one_hot = [0] * len(self.simulation.classes)
         class_one_hot[class_index] = 1
         has_been_offloaded = bool(e.offloaded_from)
