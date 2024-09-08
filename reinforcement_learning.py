@@ -82,6 +82,8 @@ class RL(Policy):
             "ExploitSchedulerDecision.DROP": [0],
         }
 
+        self.arrivi = {}
+
         self.time = 0
 
 
@@ -162,6 +164,9 @@ class RL(Policy):
             self.stats["Explore"+str(action)].append(arrival_time)
         else:
             self.stats["Exploit"+str(action)].append(arrival_time)
+
+        self.arrivi[arrival_time] = [f.name, c.name]
+
         self.stats[c.name][self.possible_decisions.index(action)] += 1
 
         # aggiungo l'elemento {event:[state,action]} al 'pending_memory'
@@ -192,10 +197,10 @@ class RL(Policy):
         perc_av_loc_mem = available_local_memory / e.node.total_memory
         best_edge_node = self.get_best_edge_node(f.memory, e.offloaded_from)
         can_execute_on_edge = True if best_edge_node is not None else False
-        function_index = self.simulation.functions.index(f)
+        function_index = self.simulation.functions.sort().index(f)
         function_one_hot = [0] * len(self.simulation.functions)
         function_one_hot[function_index] = 1
-        class_index = self.simulation.classes.index(c)
+        class_index = self.simulation.classes.sort().index(c)
         class_one_hot = [0] * len(self.simulation.classes)
         class_one_hot[class_index] = 1
         has_been_offloaded = bool(e.offloaded_from)

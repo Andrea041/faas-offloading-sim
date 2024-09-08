@@ -266,9 +266,12 @@ class Simulation:
         for n,p in self.node2policy.items():
             if isinstance(p, RL):
                 with open("dqn_results/"+n.name+".json", "w") as file_json:
-                    json.dump(p.stats, file_json)
-                    if TRAIN:
-                        p.agent.save()
+                    json.dump(p.stats, file_json, indent=4)
+                if TRAIN:
+                    p.agent.save()
+                else:
+                    with open("dqn_results/arrivi.json", "w") as arrivi_json:
+                        json.dump(p.arrivi, arrivi_json, indent=4)
 
         if self.stats_print_interval > 0:
             self.print_periodic_stats()
