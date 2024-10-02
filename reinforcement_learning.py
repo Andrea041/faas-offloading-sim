@@ -80,6 +80,18 @@ class RL(Policy):
             "ExploitSchedulerDecision.OFFLOAD_CLOUD": [0],
             "ExploitSchedulerDecision.OFFLOAD_EDGE": [0],
             "ExploitSchedulerDecision.DROP": [0],
+
+            "f1": [0,0,0,0],
+            "f2": [0,0,0,0],
+            "f3": [0,0,0,0],
+            "f4": [0,0,0,0],
+            "f5": [0,0,0,0],
+
+            "f1_reward": [0,0,0],
+            "f2_reward": [0,0,0],
+            "f3_reward": [0,0,0],
+            "f4_reward": [0,0,0],
+            "f5_reward": [0,0,0],
         }
 
         self.arrivi = {}
@@ -168,6 +180,7 @@ class RL(Policy):
         self.arrivi[arrival_time] = [f.name, c.name]
 
         self.stats[c.name][self.possible_decisions.index(action)] += 1
+        self.stats[f.name][self.possible_decisions.index(action)] += 1
 
         # aggiungo l'elemento {event:[state,action]} al 'pending_memory'
         self.agent.pending_memory[self.simulation.t] = [np_state,self.possible_decisions.index(action)]
@@ -227,6 +240,7 @@ class RL(Policy):
 
 
     def get_reward(self, action, event, duration, cost):
+        f = event.function
         c = event.qos_class
 
         if action == SchedulerDecision.EXEC:
@@ -241,10 +255,12 @@ class RL(Policy):
                 reward = c.utility
                 self.stats["EXEC"][0] += 1
                 self.stats[c.name+"_reward"][0] += 1
+                self.stats[f.name+"_reward"][0] += 1
             else:
                 reward = -c.deadline_penalty
                 self.stats["EXEC"][1] += 1
                 self.stats[c.name+"_reward"][1] += 1
+                self.stats[f.name+"_reward"][1] += 1
             if SHOW_PRINTS:
                 print("[{:.2f}]".format(self.simulation.t), event.node, end=" ")
                 print("EXEC from {} : {}".format(event.offloaded_from[-1], reward) if bool(event.offloaded_from) else "EXEC : {}".format(reward))
@@ -253,6 +269,7 @@ class RL(Policy):
             # serve nelle risposte a ritroso dell'offload per far capire che è avvenuto il drop
             duration = -1
             self.stats[c.name+"_reward"][2] += 1
+            self.stats[f.name+"_reward"][2] += 1
             if SHOW_PRINTS:
                 print("[{:.2f}]".format(self.simulation.t), event.node, end=" ")
                 print("DROP from {} : {}".format(event.offloaded_from[-1], reward) if bool(event.offloaded_from) else "DROP : {}".format(reward))
@@ -265,10 +282,12 @@ class RL(Policy):
             elif c.max_rt <= 0.0 or duration <= c.max_rt:
                 reward = c.utility
                 self.stats[c.name+"_reward"][0] += 1
+                self.stats[f.name+"_reward"][0] += 1
                 self.stats[str(action).split(".")[1]][0] += 1
             else:
                 reward = -c.deadline_penalty
                 self.stats[c.name+"_reward"][1] += 1
+                self.stats[f.name+"_reward"][1] += 1
                 self.stats[str(action).split(".")[1]][1] += 1
             if SHOW_PRINTS:
                 print("[{:.2f}]".format(self.simulation.t), event.node,"OFFLOAD completed :",reward)
