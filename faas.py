@@ -49,7 +49,7 @@ class Node:
 
     def __init__ (self, name, memory, speedup, region, cost=0.0,
                   custom_sched_policy=None,
-                  peer_exposed_memory_fraction=1.0):
+                  peer_exposed_memory_fraction=1.0, country=None, carbon_intensity=0.0):
         self.name = name
         self.total_memory = memory
         self.curr_memory = memory
@@ -58,6 +58,8 @@ class Node:
         self.region = region
         self.cost = cost
         self.custom_sched_policy = custom_sched_policy
+        self.country = country
+        self.carbon_intensity = carbon_intensity
 
         self.warm_pool = ContainerPool()
         self.kv_store = {}

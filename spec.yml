@@ -22,15 +22,18 @@ nodes:
     region: edge
     memory: 2560
     policy: dqn
+    country: saudi_arabia
   - name: edge2
     region: edge
     memory: 2560
     policy: basic
+    country: france
   - name: cloud1
     region: cloud
     cost: 0.00005
     speedup: 1.0
     memory: 8192
+    country: botswana
 functions:
   - name: f1
     memory: 512

@@ -1,0 +1,6 @@
+cpu:
+  - tdp: 4
+carbon_intensity:
+  - france: 20
+  - botswana: 810
+  - saudi_arabia: 530

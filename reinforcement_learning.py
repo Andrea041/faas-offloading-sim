@@ -1,11 +1,12 @@
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
-from policy import Policy, SchedulerDecision
-from dqn import DQN
 
-TRAIN = True
-SHOW_PRINTS = False
+from dqn import DQN
+from policy import Policy, SchedulerDecision
+
+TRAIN = False
+SHOW_PRINTS = True
 
 
 class RL(Policy):
@@ -99,6 +100,13 @@ class RL(Policy):
         self.time = 0
 
 
+    def get_ci_normalization_factor(self, tdp_cpu, carbon_intensity):
+        ci_per_function = []
+        for f in self.simulation.functions:
+            ci_per_function.append(f.serviceMean * tdp_cpu * carbon_intensity)
+        return max(ci_per_function)
+
+
     def get_cost_normalization_factor(self):
         cost_per_function = []
         for f in self.simulation.functions:
@@ -110,7 +118,6 @@ class RL(Policy):
 
 
     def schedule(self, e):
-
         if not SHOW_PRINTS and self.simulation.t - self.time > 0:
             print("[{:.2f}]".format(self.simulation.t))
             self.time += 10
@@ -151,7 +158,7 @@ class RL(Policy):
             # altrimenti sceglila tra quelle possibili
             action, explore = self.agent.act(np_state,action_filter)
         action = self.possible_decisions[action]
-        
+
         # se la decisione è EXEC eseguo 'can_execute_locally' nel caso servisse la 'reclaim_memory'
         if action == SchedulerDecision.EXEC:
             self.can_execute_locally(f)
@@ -191,9 +198,11 @@ class RL(Policy):
     def action_filter(self, state, event):
         actions = [True]*4
         available_memory = event.node.total_memory * state[0]
+
         can_execute_locally = True if event.function in event.node.warm_pool or available_memory >= event.function.memory else False
         can_execute_on_cloud = len(event.offloaded_from) < self.how_many_offload_allowed
         can_execute_on_edge = state[1] and (len(event.offloaded_from) < self.how_many_offload_allowed)
+
         if not can_execute_locally:
             actions[0] = False
         if not can_execute_on_cloud:
@@ -206,42 +215,77 @@ class RL(Policy):
     def get_state(self, e):
         f = e.function
         c = e.qos_class
+
         available_local_memory = e.node.curr_memory + sum([entry[0].memory for entry in e.node.warm_pool.pool])
         perc_av_loc_mem = available_local_memory / e.node.total_memory
+
         best_edge_node = self.get_best_edge_node(f.memory, e.offloaded_from)
         can_execute_on_edge = True if best_edge_node is not None else False
+
         self.simulation.functions.sort()
         function_index = self.simulation.functions.index(f)
         function_one_hot = [0] * len(self.simulation.functions)
         function_one_hot[function_index] = 1
+
         self.simulation.classes.sort()
         class_index = self.simulation.classes.index(c)
         class_one_hot = [0] * len(self.simulation.classes)
         class_one_hot[class_index] = 1
+
         has_been_offloaded = bool(e.offloaded_from)
+
         return [perc_av_loc_mem, can_execute_on_edge] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
 
 
     # Seleziona tra i nodi edge disponibili all'offload, uno random tra quelli con speedup maggiore 
+    #def get_best_edge_node(self, required_memory, offloaded_from):
+    #    peers = self._get_edge_peers()
+    #    chosen = []
+    #    curr_speedup = 0
+    #    for peer in peers:
+    #        if peer not in offloaded_from and peer.curr_memory*peer.peer_exposed_memory_fraction >= required_memory:
+    #            if peer.speedup > curr_speedup:
+    #                curr_speedup = peer.speedup
+    #                chosen = [peer]
+    #            elif peer.speedup == curr_speedup:
+    #                chosen.append(peer)
+    #    if len(chosen) < 1:
+    #        return None
+    #    return self.simulation.node_choice_rng.choice(chosen)
+
     def get_best_edge_node(self, required_memory, offloaded_from):
         peers = self._get_edge_peers()
-        chosen = []
-        curr_speedup = 0
+        candidates = []
+
         for peer in peers:
-            if peer not in offloaded_from and peer.curr_memory*peer.peer_exposed_memory_fraction >= required_memory:
-                if peer.speedup > curr_speedup:
-                    curr_speedup = peer.speedup
-                    chosen = [peer]
-                elif peer.speedup == curr_speedup:
-                    chosen.append(peer)
-        if len(chosen) < 1:
+            if peer not in offloaded_from and peer.curr_memory * peer.peer_exposed_memory_fraction >= required_memory:
+                candidates.append(peer)
+
+        if not candidates:
             return None
-        return self.simulation.node_choice_rng.choice(chosen)
+
+        scored_peers = []
+        for p in candidates:
+            if p.carbon_intensity > 0:
+                # Se volessi mantenere il valore dello score compreso tra 0 e 1 dovrei implementare una normalizzazione
+                score = p.speedup / p.carbon_intensity
+            else:
+                # Caso ideale di un paese che ha consumo energetico nullo
+                score = float('inf')
+            scored_peers.append((score, p))
+
+        # Punteggio massimo
+        max_score = max(s for s, _ in scored_peers)
+        best_peers = [p for s, p in scored_peers if s == max_score]
+
+        return self.simulation.node_choice_rng.choice(best_peers)
 
 
-    def get_reward(self, action, event, duration, cost):
+
+    def get_reward(self, action, event, duration, cost, energetic_cost, norm_ene_factor, target_node):
         f = event.function
         c = event.qos_class
+        n = event.node
 
         if action == SchedulerDecision.EXEC:
             # Account for the time needed to send back the result
@@ -279,10 +323,15 @@ class RL(Policy):
                 # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
                 print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
                 exit(1)
-            elif c.max_rt <= 0.0 or duration <= c.max_rt:
+            elif c.max_rt <= 0.0 or duration <= c.max_rt and target_node.carbon_intensity <= n.carbon_intensity:
                 reward = c.utility
                 self.stats[c.name+"_reward"][0] += 1
                 self.stats[f.name+"_reward"][0] += 1
+                self.stats[str(action).split(".")[1]][0] += 1
+            elif c.max_rt <= 0.0 or duration <= c.max_rt and target_node.carbon_intensity > n.carbon_intensity:
+                reward = c.utility / 2
+                self.stats[c.name + "_reward"][0] += 1
+                self.stats[f.name + "_reward"][0] += 1
                 self.stats[str(action).split(".")[1]][0] += 1
             else:
                 reward = -c.deadline_penalty
@@ -290,7 +339,7 @@ class RL(Policy):
                 self.stats[f.name+"_reward"][1] += 1
                 self.stats[str(action).split(".")[1]][1] += 1
             if SHOW_PRINTS:
-                print("[{:.2f}]".format(self.simulation.t), event.node,"OFFLOAD completed :",reward)
+                print("[{:.2f}]".format(self.simulation.t), event.node,"OFFLOAD completed :", reward)
 
         self.stats["reward"].append(reward)
         
@@ -299,11 +348,18 @@ class RL(Policy):
         # normalizzo il costo
         nomalized_cost = cost / self.cost_normalization_factor
 
+        if norm_ene_factor != 0:
+            normalized_energ_cost = energetic_cost / norm_ene_factor
+        else:
+            normalized_energ_cost = 0
+
         # pesi rispettivamente per utility/penalty e cost
         w1 = self.agent.w1
-        w2 = 1 - w1
+        #w2 = 1 - w1
+        w2 = self.agent.w2
+        w3 = 1 - w2 - w1
 
-        reward = w1 * reward - w2 * nomalized_cost
+        reward = w1 * reward - w2 * nomalized_cost - w3 * normalized_energ_cost
 
         self.stats["reward_cost"].append(reward)
 

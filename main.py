@@ -38,6 +38,10 @@ def read_spec_file (spec_file_name, infra, config):
             classes.append(newclass)
             classname2class[classname]=newclass
 
+        with open("energetic_param.yml", "r") as f:
+            config = yaml.safe_load(f)
+        carbon_intensity_data = {k: v for d in config['carbon_intensity'] for k, v in d.items()}
+
         node_names = {}
         nodes = spec["nodes"]
         for n in nodes:
@@ -48,9 +52,10 @@ def read_spec_file (spec_file_name, infra, config):
             speedup = n["speedup"] if "speedup" in n else 1.0
             cost = n["cost"] if "cost" in n else 0.0
             custom_policy = n["policy"] if "policy" in n else None
+            country = n["country"] if "country" in n else None
             node = faas.Node(node_name, memory, speedup, reg, cost=cost,
                              custom_sched_policy=custom_policy,
-                             peer_exposed_memory_fraction=peer_exposed_memory_fraction)
+                             peer_exposed_memory_fraction=peer_exposed_memory_fraction, country=country, carbon_intensity=carbon_intensity_data[country])
             node_names[node_name] = node
             infra.add_node(node, reg)
 
@@ -147,12 +152,11 @@ def init_simulation (config):
     return sim
 
 def main():
-    DEFAULT_CONFIG_FILE = "config.ini"
+    DEFAULT_CONFIG_FILE = "default.ini"
     config_file = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_CONFIG_FILE
     config = conf.parse_config_file(config_file)
     simulation = init_simulation(config)
     final_stats = simulation.run()
-
 
 
 if __name__ == "__main__":

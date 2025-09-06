@@ -5,7 +5,6 @@ import random
 import yaml
 import math
 from collections import deque
-import tensorflow as tf
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
@@ -43,7 +42,8 @@ class DQN():
                     self.stable_treshold = node["stable_treshold"]
                     self.train_round = 0
                     self.train_every = node["train_every"]
-                    self.w1 = node["w1"]    # w2 = 1 - w1
+                    self.w1 = node["w1"]
+                    self.w2 = node["w2"]
                     self.model = self._build_model()
                     node_found = True
                     break
@@ -100,12 +100,15 @@ class DQN():
 
 
     def save(self):
-        save_model(self.model, "dqn_results/model.keras")
-        self.model.export('dqn_results/model')
+        #save_model(self.model, "dqn_results/model.keras")
+        #self.model.export('dqn_results/model')
+        save_model(self.model, "dqn_results/model.h5")
+        #self.model.export('dqn_results/model')
         # tf.saved_model.save(self.model, 'dqn_results/tf_model')
         # tf.saved_model.save(self.model, 'dqn_results/tf_model', signatures=None, options=tf.saved_model.SaveOptions(tags=['serve', 'train']))
         print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
 
 
     def load(self):
-        self.model = load_model("dqn_results/model.keras")
+        #self.model = load_model("dqn_results/model.keras")
+        self.model = load_model("dqn_results/model.h5")
