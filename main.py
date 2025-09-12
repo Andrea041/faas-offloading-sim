@@ -1,16 +1,16 @@
-import sys
 import math
-import numpy as np
-import yaml
+import sys
 import time
 
-import faas
+import numpy as np
+import yaml
+from numpy.random import SeedSequence
+
 import conf
-import stateful
+import faas
 from arrivals import PoissonArrivalProcess, TraceArrivalProcess, MAPArrivalProcess
-from numpy.random import SeedSequence, default_rng
-from simulation import Simulation
 from infrastructure import *
+from simulation import Simulation
 
 
 def read_spec_file (spec_file_name, infra, config):

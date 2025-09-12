@@ -1,5 +1,6 @@
-cpu:
-  - tdp: 4
+power_consumption:
+  - edge: 0.0003
+  - cloud: 0.3
 carbon_intensity:
   - france: 20
   - botswana: 810

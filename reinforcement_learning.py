@@ -5,7 +5,7 @@ import scipy.stats as stats
 from dqn import DQN
 from policy import Policy, SchedulerDecision
 
-TRAIN = False
+TRAIN = True
 SHOW_PRINTS = True
 
 
@@ -237,22 +237,6 @@ class RL(Policy):
         return [perc_av_loc_mem, can_execute_on_edge] + function_one_hot + class_one_hot + [has_been_offloaded], best_edge_node
 
 
-    # Seleziona tra i nodi edge disponibili all'offload, uno random tra quelli con speedup maggiore 
-    #def get_best_edge_node(self, required_memory, offloaded_from):
-    #    peers = self._get_edge_peers()
-    #    chosen = []
-    #    curr_speedup = 0
-    #    for peer in peers:
-    #        if peer not in offloaded_from and peer.curr_memory*peer.peer_exposed_memory_fraction >= required_memory:
-    #            if peer.speedup > curr_speedup:
-    #                curr_speedup = peer.speedup
-    #                chosen = [peer]
-    #            elif peer.speedup == curr_speedup:
-    #                chosen.append(peer)
-    #    if len(chosen) < 1:
-    #        return None
-    #    return self.simulation.node_choice_rng.choice(chosen)
-
     def get_best_edge_node(self, required_memory, offloaded_from):
         peers = self._get_edge_peers()
         candidates = []
@@ -281,13 +265,29 @@ class RL(Policy):
         return self.simulation.node_choice_rng.choice(best_peers)
 
 
-
-    def get_reward(self, action, event, duration, cost, energetic_cost, norm_ene_factor, target_node):
+    def get_reward(self, action, event, duration, cost, emissions, target_node, cloud_nodes):
         f = event.function
         c = event.qos_class
         n = event.node
 
+        peers = self._get_edge_peers()
+        total_serverledge_nodes = peers + cloud_nodes
+
+        min_reward_factor = 0.5  # soglia minima di reward
+
+        ci_local = n.carbon_intensity
+        ci_best = min(node.carbon_intensity for node in total_serverledge_nodes)
+        ci_worst = max(node.carbon_intensity for node in total_serverledge_nodes)
+
         if action == SchedulerDecision.EXEC:
+            # Eviti divisione per zero se tutti i nodi hanno lo stesso CI
+            if ci_worst > ci_best:
+                local_factor = (ci_worst - ci_local) / (ci_worst - ci_best)
+            else:
+                local_factor = 1.0  # tutti i nodi uguali, locale è già “best”
+
+            carbon_factor = max(min_reward_factor, local_factor)
+
             # Account for the time needed to send back the result
             if event.offloaded_from != None:
                 curr_node = event.node
@@ -296,7 +296,7 @@ class RL(Policy):
                     curr_node = remote_node
 
             if c.max_rt <= 0.0 or duration <= c.max_rt:
-                reward = c.utility
+                reward = c.utility * carbon_factor
                 self.stats["EXEC"][0] += 1
                 self.stats[c.name+"_reward"][0] += 1
                 self.stats[f.name+"_reward"][0] += 1
@@ -318,20 +318,41 @@ class RL(Policy):
                 print("[{:.2f}]".format(self.simulation.t), event.node, end=" ")
                 print("DROP from {} : {}".format(event.offloaded_from[-1], reward) if bool(event.offloaded_from) else "DROP : {}".format(reward))
         elif action == SchedulerDecision.OFFLOAD_CLOUD or action == SchedulerDecision.OFFLOAD_EDGE:
+            ci_target = target_node.carbon_intensity
+
+            if ci_local == ci_best and ci_target == ci_local:
+                # Caso speciale: locale già il migliore, target uguale → premio pieno
+                carbon_factor = 1.0
+            elif ci_local != ci_best and ci_target == ci_local:
+                # Caso in cui faccio offload ad un nodo con stesso ci ma non è il migliore (utilità non completa)
+                carbon_factor = min_reward_factor
+            elif ci_target < ci_local:
+                min_reward_factor_better = 0.6
+                # Target migliore → premio proporzionale al miglioramento
+                if ci_local > 0 and ci_best != ci_target:
+                    improvement_ratio = (ci_local - ci_target) / ci_local
+                elif ci_local > 0 and ci_best == ci_target:
+                    improvement_ratio = 1.0
+                else:
+                    improvement_ratio = 0.0
+                carbon_factor = max(min_reward_factor_better, improvement_ratio)
+            else:
+                percent_worse = min((ci_target - ci_local) / ci_local, 1.0)
+                if percent_worse <= 0.5:
+                    carbon_factor = 0.4
+                else:
+                    # Peggiore di oltre il 50%
+                    carbon_factor = 0.2  # minima soglia
+
             # se la durata è negativa è avvenuto un drop
             if duration < 0:
                 # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
                 print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
                 exit(1)
-            elif c.max_rt <= 0.0 or duration <= c.max_rt and target_node.carbon_intensity <= n.carbon_intensity:
-                reward = c.utility
+            elif c.max_rt <= 0.0 or duration <= c.max_rt:
+                reward = c.utility * carbon_factor
                 self.stats[c.name+"_reward"][0] += 1
                 self.stats[f.name+"_reward"][0] += 1
-                self.stats[str(action).split(".")[1]][0] += 1
-            elif c.max_rt <= 0.0 or duration <= c.max_rt and target_node.carbon_intensity > n.carbon_intensity:
-                reward = c.utility / 2
-                self.stats[c.name + "_reward"][0] += 1
-                self.stats[f.name + "_reward"][0] += 1
                 self.stats[str(action).split(".")[1]][0] += 1
             else:
                 reward = -c.deadline_penalty
@@ -348,18 +369,15 @@ class RL(Policy):
         # normalizzo il costo
         nomalized_cost = cost / self.cost_normalization_factor
 
-        if norm_ene_factor != 0:
-            normalized_energ_cost = energetic_cost / norm_ene_factor
-        else:
-            normalized_energ_cost = 0
-
-        # pesi rispettivamente per utility/penalty e cost
+        # pesi
         w1 = self.agent.w1
-        #w2 = 1 - w1
         w2 = self.agent.w2
         w3 = 1 - w2 - w1
 
-        reward = w1 * reward - w2 * nomalized_cost - w3 * normalized_energ_cost
+        if w3 < 0:
+            w3 = 0
+
+        reward = w1 * reward - w2 * nomalized_cost - w3 * emissions
 
         self.stats["reward_cost"].append(reward)
 

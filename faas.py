@@ -76,6 +76,9 @@ class Node:
     def __hash__ (self):
         return hash(self.name)
 
+    def get_region (self):
+        return self.region
+
 
 
 

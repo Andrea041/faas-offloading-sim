@@ -50,6 +50,8 @@ def reward_plot(data):
     plt.show()
 
 
+import matplotlib.pyplot as plt
+
 def actions_plot(data):
     # Prendi tutte le chiavi delle decisioni dello scheduler
     decision_keys = [k for k in data.keys() if k.startswith("SchedulerDecision.")]
@@ -71,6 +73,11 @@ def actions_plot(data):
 
         plt.step(times, counts, label=key.split(".")[1], where='post')
 
+        # Stampa il conteggio finale a lato della curva
+        if counts:
+            plt.text(t_max + 0.01*(t_max or 1), counts[-1], str(counts[-1]),
+                     verticalalignment='center')
+
     plt.xlabel("Tempo")
     plt.ylabel("Conteggio cumulativo")
     plt.title("Scelte dello Scheduler nel tempo")
@@ -78,6 +85,7 @@ def actions_plot(data):
     plt.grid(True)
     plt.tight_layout()
     plt.show()
+
 
 
 

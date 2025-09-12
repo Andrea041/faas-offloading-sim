@@ -128,8 +128,11 @@ class Simulation:
 
         with open("energetic_param.yml", "r") as f:
             config = yaml.safe_load(f)
-        self.tdp_cpu = config['cpu'][0]['tdp']
-
+        temp = {k: v for d in config['power_consumption'] for k, v in d.items()}
+        self.power_cons = []
+        for name, power in temp.items():
+            region = Region(name)
+            self.power_cons.append((region, power))
 
     def new_policy (self, configured_policy, node):
         if configured_policy == "basic":
@@ -300,6 +303,9 @@ class Simulation:
 
         return self.stats
 
+    def fetch_other_serverledge_cloud_node(self):
+        cloud_nodes = self.infra.get_cloud_nodes()
+        return cloud_nodes
 
     def move_key (self, k, src_node, dest_node):
         if src_node == dest_node:
@@ -461,6 +467,12 @@ class Simulation:
 
         self.schedule(self.t + latency + OFFLOADING_OVERHEAD + transfer_time, remote_arv)
 
+    def get_power(self, region: Region):
+        for r, power in self.power_cons:
+            if r == region:
+                return power
+        raise ValueError(f"Region '{region}' not found")
+
     def handle_arrival (self, event):
         n = event.node
         node_policy = self.node2policy[n]
@@ -472,12 +484,7 @@ class Simulation:
         if external:
             self.stats.ext_arrivals[(f,c,n)] += 1
 
-        carbon_intensity = 0
-        norm_ci_factor = 0
         remote_node = None
-
-        if isinstance(node_policy, RL):
-            carbon_intensity = n.carbon_intensity
 
         # Policy
         if isinstance(node_policy, RL):
@@ -496,6 +503,8 @@ class Simulation:
         elif target_node is not None:
             remote_node = target_node
 
+        cloud_nodes = self.fetch_other_serverledge_cloud_node()
+
         if sched_decision == SchedulerDecision.EXEC:
             duration, data_access_time = self.next_function_duration(f, n)
             # check warm or cold
@@ -512,11 +521,13 @@ class Simulation:
             self.schedule(float(self.t + init_time + duration), Completion(arrival_time, f,c, n, init_time > 0, duration, event.offloaded_from, data_access_time))
             tot_duration = float(self.t + init_time + duration - arrival_time)
             cost = duration * f.memory/1024 * n.cost
-            energetic_cost = duration * self.tdp_cpu * carbon_intensity
+
+            node_power = self.get_power(n.region)
+            emissions = duration/3600 * node_power * n.carbon_intensity # Il valore sarà sempre molto piccolo perchè si tratta di durate in secondi molto piccole delle funzioni
 
             if isinstance(node_policy, RL):
-                norm_ci_factor = node_policy.get_ci_normalization_factor(self.tdp_cpu, carbon_intensity)
-                node_policy.get_reward(sched_decision, event, tot_duration, cost, energetic_cost, norm_ci_factor, remote_node)
+                #norm_ci_factor = node_policy.get_ci_normalization_factor(self.tdp_cpu, n.carbon_intensity)
+                node_policy.get_reward(sched_decision, event, tot_duration, cost, emissions, remote_node, cloud_nodes)
             if bool(event.offloaded_from):
                 if SHOW_PRINTS:
                     print("[{:.2f}]".format(self.t), n.name, "EXEC for", event.offloaded_from)
@@ -525,7 +536,7 @@ class Simulation:
                     # se era stato fatto l'offload da almeno un nodo RL propago i reward
                     if isinstance(original_node_policy, RL):
                         pending_event = original_node_policy.pending_events.pop(event.t_waiting_for_reward[-1])
-                        original_node_policy.get_reward(pending_event[1], pending_event[2], tot_duration, cost, energetic_cost, norm_ci_factor, n)
+                        original_node_policy.get_reward(pending_event[1], pending_event[2], tot_duration, cost, emissions, n, cloud_nodes)
                         event.t_waiting_for_reward.pop()
         elif sched_decision == SchedulerDecision.DROP:
             self.stats.dropped_reqs[(f,c,n)] += 1
@@ -533,7 +544,7 @@ class Simulation:
             if event.offloaded_from is not None and len(event.offloaded_from) > 0:
                 self.stats.dropped_offloaded[(f,c,n)] += 1
             if isinstance(node_policy, RL):
-                node_policy.get_reward(sched_decision, event, None, 0, 0, 0, remote_node)
+                node_policy.get_reward(sched_decision, event, None, 0, 0, remote_node, cloud_nodes)
             if any(isinstance(self.node2policy[original_node], RL) for original_node in reversed(event.offloaded_from)):
                 # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
                 print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
