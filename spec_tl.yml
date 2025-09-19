@@ -63,16 +63,7 @@ functions:
 arrivals:
   - node: edge1
     function: f1
-    rate: 0.8
+    rate: 2.9
   - node: edge1
     function: f2
-    rate: 1.6
-  - node: edge1
-    function: f3
-    rate: 4.2
-  - node: edge1
-    function: f4
-    rate: 0.6
-  - node: edge1
-    function: f5
-    rate: 1.4
+    rate: 5.7

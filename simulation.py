@@ -523,10 +523,9 @@ class Simulation:
             cost = duration * f.memory/1024 * n.cost
 
             node_power = self.get_power(n.region)
-            emissions = duration/3600 * node_power * n.carbon_intensity # Il valore sarà sempre molto piccolo perchè si tratta di durate in secondi molto piccole delle funzioni
+            emissions = duration/3600 * node_power * n.carbon_intensity
 
             if isinstance(node_policy, RL):
-                #norm_ci_factor = node_policy.get_ci_normalization_factor(self.tdp_cpu, n.carbon_intensity)
                 node_policy.get_reward(sched_decision, event, tot_duration, cost, emissions, remote_node, cloud_nodes)
             if bool(event.offloaded_from):
                 if SHOW_PRINTS:

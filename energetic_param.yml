@@ -1,6 +1,6 @@
 power_consumption:
-  - edge: 0.0003
-  - cloud: 0.3
+  - edge: 0.09
+  - cloud: 0.45
 carbon_intensity:
   - france: 20
   - botswana: 810

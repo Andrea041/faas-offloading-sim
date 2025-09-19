@@ -1,4 +1,7 @@
 import os
+
+from transfer_learning import TL
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 import numpy as np
 import random
@@ -8,9 +11,11 @@ from collections import deque
 from tensorflow.keras.models import Sequential, save_model, load_model
 from tensorflow.keras.layers import Dense, Input
 from tensorflow.keras.optimizers import Adam
-
+import tensorflow as tf
+import transfer_learning
 
 TRAIN = None
+TRANSFER = False
 
 class DQN():
     def __init__(self, node_name, isStable, close_the_door_time):
@@ -18,6 +23,8 @@ class DQN():
         TRAIN = not isStable
         self.close_the_door_time = close_the_door_time
         node_found = False
+        if TRANSFER:
+            self.tl = TL(transfer_learning.load_tl_model())
         with open("dqn_config.yml", 'r') as file:
             config = yaml.safe_load(file)
             for node in config["nodes"]:
@@ -44,7 +51,10 @@ class DQN():
                     self.train_every = node["train_every"]
                     self.w1 = node["w1"]
                     self.w2 = node["w2"]
-                    self.model = self._build_model()
+                    if not TRANSFER:
+                        self.model = self._build_model()
+                    else:
+                        self.model = self.tl.build_tl_model()
                     node_found = True
                     break
         if not node_found:
@@ -100,11 +110,18 @@ class DQN():
 
 
     def save(self):
-        #save_model(self.model, "dqn_results/model.h5")
-        self.model.save("model.pb", save_format="tf")
-        #print(" ---> RICORDATI DI SPOSTARE ANCHE IL MODELLO! <---")
+        save_model(self.model, "dqn_results/model.keras")
 
+        @tf.function(input_signature=[tf.TensorSpec([None, None], tf.float32, name="state_input")])
+        def inference_fn(state_input):
+            return {"action": self.model(state_input)}
+
+        tf.saved_model.save(
+            self.model,
+            "dqn_results/model",
+            signatures=inference_fn)
+
+        save_model(self.model, "dqn_results/model_tl.keras", include_optimizer=False)
 
     def load(self):
-        #self.model = load_model("dqn_results/model.h5")
-        self.model = load_model("model.pb")
+        tf.saved_model.load("dqn_results/model")

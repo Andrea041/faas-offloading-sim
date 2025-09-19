@@ -5,9 +5,9 @@ import scipy.stats as stats
 from dqn import DQN
 from policy import Policy, SchedulerDecision
 
-TRAIN = True
+TRAIN = False
 SHOW_PRINTS = True
-
+TRANSFER = False
 
 class RL(Policy):
     '''
@@ -30,8 +30,10 @@ class RL(Policy):
 
         self.possible_decisions = list(SchedulerDecision)
 
-        if policy == "dqn":
+        if policy == "dqn" and not TRANSFER:
             self.agent = DQN(node.name, not TRAIN, close_the_door_time)
+        elif policy == "dqn" and TRANSFER:
+            self.agent = DQN(node.name, True, close_the_door_time)
         else:
             print("[{:.2f}]".format(self.t), "ERRORE: Unknown policy specified for RL!")
             exit(1)
@@ -42,6 +44,7 @@ class RL(Policy):
         self.how_many_offload_allowed = 3
 
         self.cost_normalization_factor = self.get_cost_normalization_factor()
+        #self.emission_normalization_factor = 0.001
 
         self.stats = {
             "SchedulerDecision.EXEC": [0],
@@ -98,14 +101,6 @@ class RL(Policy):
         self.arrivi = {}
 
         self.time = 0
-
-
-    def get_ci_normalization_factor(self, tdp_cpu, carbon_intensity):
-        ci_per_function = []
-        for f in self.simulation.functions:
-            ci_per_function.append(f.serviceMean * tdp_cpu * carbon_intensity)
-        return max(ci_per_function)
-
 
     def get_cost_normalization_factor(self):
         cost_per_function = []
@@ -271,7 +266,7 @@ class RL(Policy):
         n = event.node
 
         peers = self._get_edge_peers()
-        total_serverledge_nodes = peers + cloud_nodes
+        total_serverledge_nodes = peers + cloud_nodes + [n]
 
         min_reward_factor = 0.5  # soglia minima di reward
 
