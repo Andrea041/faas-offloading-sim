@@ -234,8 +234,6 @@ class Simulation:
             self.resp_times_file = None
 
 
-
-
         if not self.config.getboolean(conf.SEC_SIM, conf.PLOT_RESP_TIMES, fallback=False):
             self.resp_time_samples = {}
         else:
@@ -524,6 +522,7 @@ class Simulation:
 
             node_power = self.get_power(n.region)
             emissions = duration/3600 * node_power * n.carbon_intensity
+
 
             if isinstance(node_policy, RL):
                 node_policy.get_reward(sched_decision, event, tot_duration, cost, emissions, remote_node, cloud_nodes)

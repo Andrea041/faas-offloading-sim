@@ -112,6 +112,7 @@ class DQN():
     def save(self):
         save_model(self.model, "dqn_results/model.keras")
 
+        # Questo è per serverledge
         @tf.function(input_signature=[tf.TensorSpec([None, None], tf.float32, name="state_input")])
         def inference_fn(state_input):
             return {"action": self.model(state_input)}
@@ -121,7 +122,11 @@ class DQN():
             "dqn_results/model",
             signatures=inference_fn)
 
+        # Questo è per il transfer learning
         save_model(self.model, "dqn_results/model_tl.keras", include_optimizer=False)
 
     def load(self):
-        tf.saved_model.load("dqn_results/model")
+        if not TRANSFER:
+            self.model = load_model("dqn_results/model.keras")
+        else:
+            self.model = load_model("dqn_results/model_tl.keras")

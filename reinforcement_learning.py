@@ -1,8 +1,10 @@
 import numpy as np
 import pandas as pd
 import scipy.stats as stats
+import yaml
 
 from dqn import DQN
+from infrastructure import Region
 from policy import Policy, SchedulerDecision
 
 TRAIN = False
@@ -42,9 +44,12 @@ class RL(Policy):
             self.agent.load()
 
         self.how_many_offload_allowed = 3
+        self.p = 0.000075    # euro/gCO_2
 
         self.cost_normalization_factor = self.get_cost_normalization_factor()
-        #self.emission_normalization_factor = 0.001
+
+        max_power, max_ci_data = self.get_max_power_and_ci()
+        self.cost_emission_normalization_factor = self.get_emission_cost_normalization_factor(max_power, max_ci_data, self.p)
 
         self.stats = {
             "SchedulerDecision.EXEC": [0],
@@ -110,6 +115,38 @@ class RL(Policy):
             higher_percentile = percentile * 1.5
             cost_per_function.append(higher_percentile * f.memory/1024 * self.cloud.cost)
         return max(cost_per_function)
+
+    def get_emission_cost_normalization_factor(self, max_power, max_ci_data, p):
+        cost_per_function = []
+        for f in self.simulation.functions:
+            percentile = stats.gamma.ppf(0.9999, 1.0 / f.serviceSCV,
+                                         scale=f.serviceMean * f.serviceSCV / self.cloud.speedup)
+            # prendo il 50% in più per stare più tranquillo
+            higher_percentile = percentile * 1.5
+            cost_per_function.append(higher_percentile/3600 * max_power * max_ci_data * p)
+        return max(cost_per_function)
+
+    def get_max_power_and_ci(self):
+        with open("energetic_param.yml", "r") as f:
+            config = yaml.safe_load(f)
+        carbon_intensity_data = {k: v for d in config['carbon_intensity'] for k, v in d.items()}
+
+        max_ci_data = 0
+        for k in carbon_intensity_data.keys():
+            if carbon_intensity_data[k] > max_ci_data:
+                max_ci_data = carbon_intensity_data[k]
+
+        temp = {k: v for d in config['power_consumption'] for k, v in d.items()}
+        power_cons = []
+        for name, power in temp.items():
+            region = Region(name)
+            power_cons.append((region, power))
+        max_power = 0
+        for r, power in power_cons:
+            if power > max_power:
+                max_power = power
+
+        return max_power, max_ci_data
 
 
     def schedule(self, e):
@@ -362,7 +399,10 @@ class RL(Policy):
         self.stats["cost"].append(cost)
 
         # normalizzo il costo
-        nomalized_cost = cost / self.cost_normalization_factor
+        normalized_cost = cost / self.cost_normalization_factor
+
+        emission_cost = self.p * emissions
+        normalized_emission_cost = emission_cost / self.cost_emission_normalization_factor
 
         # pesi
         w1 = self.agent.w1
@@ -372,7 +412,7 @@ class RL(Policy):
         if w3 < 0:
             w3 = 0
 
-        reward = w1 * reward - w2 * nomalized_cost - w3 * emissions
+        reward = w1 * reward - w2 * normalized_cost - w3 * normalized_emission_cost
 
         self.stats["reward_cost"].append(reward)
 
