@@ -12,7 +12,7 @@ from arrivals import PoissonArrivalProcess, TraceArrivalProcess, MAPArrivalProce
 from infrastructure import *
 from simulation import Simulation
 
-TRANSFER = False
+TRANSFER = True
 
 def read_spec_file (spec_file_name, infra, config):
     peer_exposed_memory_fraction = config.getfloat(conf.SEC_SIM, conf.EDGE_EXPOSED_FRACTION, fallback=0.5)
@@ -147,6 +147,7 @@ def init_simulation (config):
     # Read spec file
     spec_file_name = config.get(conf.SEC_SIM, conf.SPEC_FILE, fallback=None)
     if TRANSFER:
+        print("Started simulation with transfer learning")
         spec_file_name = "spec_tl.yml"
     else:
         spec_file_name = "spec.yml"

@@ -15,7 +15,7 @@ import tensorflow as tf
 import transfer_learning
 
 TRAIN = None
-TRANSFER = False
+TRANSFER = True
 
 class DQN():
     def __init__(self, node_name, isStable, close_the_door_time):

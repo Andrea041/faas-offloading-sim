@@ -7,9 +7,9 @@ from dqn import DQN
 from infrastructure import Region
 from policy import Policy, SchedulerDecision
 
-TRAIN = False
+TRAIN = True
 SHOW_PRINTS = True
-TRANSFER = False
+TRANSFER = True
 
 class RL(Policy):
     '''
@@ -44,12 +44,11 @@ class RL(Policy):
             self.agent.load()
 
         self.how_many_offload_allowed = 3
-        self.p = 0.000075    # euro/gCO_2
 
         self.cost_normalization_factor = self.get_cost_normalization_factor()
 
         max_power, max_ci_data = self.get_max_power_and_ci()
-        self.cost_emission_normalization_factor = self.get_emission_cost_normalization_factor(max_power, max_ci_data, self.p)
+        self.cost_emission_normalization_factor = self.get_emission_cost_normalization_factor(max_power, max_ci_data)
 
         self.stats = {
             "SchedulerDecision.EXEC": [0],
@@ -116,14 +115,14 @@ class RL(Policy):
             cost_per_function.append(higher_percentile * f.memory/1024 * self.cloud.cost)
         return max(cost_per_function)
 
-    def get_emission_cost_normalization_factor(self, max_power, max_ci_data, p):
+    def get_emission_cost_normalization_factor(self, max_power, max_ci_data):
         cost_per_function = []
         for f in self.simulation.functions:
             percentile = stats.gamma.ppf(0.9999, 1.0 / f.serviceSCV,
                                          scale=f.serviceMean * f.serviceSCV / self.cloud.speedup)
             # prendo il 50% in più per stare più tranquillo
             higher_percentile = percentile * 1.5
-            cost_per_function.append(higher_percentile/3600 * max_power * max_ci_data * p)
+            cost_per_function.append(higher_percentile/3600 * max_power * max_ci_data)
         return max(cost_per_function)
 
     def get_max_power_and_ci(self):
@@ -297,29 +296,11 @@ class RL(Policy):
         return self.simulation.node_choice_rng.choice(best_peers)
 
 
-    def get_reward(self, action, event, duration, cost, emissions, target_node, cloud_nodes):
+    def get_reward(self, action, event, duration, cost, emissions):
         f = event.function
         c = event.qos_class
-        n = event.node
-
-        peers = self._get_edge_peers()
-        total_serverledge_nodes = peers + cloud_nodes + [n]
-
-        min_reward_factor = 0.5  # soglia minima di reward
-
-        ci_local = n.carbon_intensity
-        ci_best = min(node.carbon_intensity for node in total_serverledge_nodes)
-        ci_worst = max(node.carbon_intensity for node in total_serverledge_nodes)
 
         if action == SchedulerDecision.EXEC:
-            # Eviti divisione per zero se tutti i nodi hanno lo stesso CI
-            if ci_worst > ci_best:
-                local_factor = (ci_worst - ci_local) / (ci_worst - ci_best)
-            else:
-                local_factor = 1.0  # tutti i nodi uguali, locale è già “best”
-
-            carbon_factor = max(min_reward_factor, local_factor)
-
             # Account for the time needed to send back the result
             if event.offloaded_from != None:
                 curr_node = event.node
@@ -328,7 +309,7 @@ class RL(Policy):
                     curr_node = remote_node
 
             if c.max_rt <= 0.0 or duration <= c.max_rt:
-                reward = c.utility * carbon_factor
+                reward = c.utility
                 self.stats["EXEC"][0] += 1
                 self.stats[c.name+"_reward"][0] += 1
                 self.stats[f.name+"_reward"][0] += 1
@@ -350,39 +331,13 @@ class RL(Policy):
                 print("[{:.2f}]".format(self.simulation.t), event.node, end=" ")
                 print("DROP from {} : {}".format(event.offloaded_from[-1], reward) if bool(event.offloaded_from) else "DROP : {}".format(reward))
         elif action == SchedulerDecision.OFFLOAD_CLOUD or action == SchedulerDecision.OFFLOAD_EDGE:
-            ci_target = target_node.carbon_intensity
-
-            if ci_local == ci_best and ci_target == ci_local:
-                # Caso speciale: locale già il migliore, target uguale → premio pieno
-                carbon_factor = 1.0
-            elif ci_local != ci_best and ci_target == ci_local:
-                # Caso in cui faccio offload ad un nodo con stesso ci ma non è il migliore (utilità non completa)
-                carbon_factor = min_reward_factor
-            elif ci_target < ci_local:
-                min_reward_factor_better = 0.6
-                # Target migliore → premio proporzionale al miglioramento
-                if ci_local > 0 and ci_best != ci_target:
-                    improvement_ratio = (ci_local - ci_target) / ci_local
-                elif ci_local > 0 and ci_best == ci_target:
-                    improvement_ratio = 1.0
-                else:
-                    improvement_ratio = 0.0
-                carbon_factor = max(min_reward_factor_better, improvement_ratio)
-            else:
-                percent_worse = min((ci_target - ci_local) / ci_local, 1.0)
-                if percent_worse <= 0.5:
-                    carbon_factor = 0.4
-                else:
-                    # Peggiore di oltre il 50%
-                    carbon_factor = 0.2  # minima soglia
-
             # se la durata è negativa è avvenuto un drop
             if duration < 0:
                 # non ci dovrebbe più entrare perchè gli offload vengono fatti solo se eseguibili
                 print("[{:.2f}]".format(self.t), "ERRORE: An offload has been dropped!")
                 exit(1)
             elif c.max_rt <= 0.0 or duration <= c.max_rt:
-                reward = c.utility * carbon_factor
+                reward = c.utility
                 self.stats[c.name+"_reward"][0] += 1
                 self.stats[f.name+"_reward"][0] += 1
                 self.stats[str(action).split(".")[1]][0] += 1
@@ -400,9 +355,7 @@ class RL(Policy):
 
         # normalizzo il costo
         normalized_cost = cost / self.cost_normalization_factor
-
-        emission_cost = self.p * emissions
-        normalized_emission_cost = emission_cost / self.cost_emission_normalization_factor
+        normalized_emission_cost = emissions / self.cost_emission_normalization_factor
 
         # pesi
         w1 = self.agent.w1

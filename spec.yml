@@ -20,20 +20,22 @@ classes:
 nodes:
   - name: edge1
     region: edge
+    cost: 0.0189 # costo_energetico = prezzo (€ / kWh) * potenza_nodo (kWh)
     memory: 2560
     policy: dqn
-    country: france
+    country: poland
   - name: edge2
     region: edge
+    cost: 0.0189
     memory: 2560
     policy: basic
-    country: france
+    country: poland
   - name: cloud1
     region: cloud
-    cost: 0.00005
+    cost: 0.09005   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
     speedup: 1.0
     memory: 8192
-    country: botswana
+    country: france
 functions:
   - name: f1
     memory: 512

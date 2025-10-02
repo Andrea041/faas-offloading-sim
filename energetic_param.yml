@@ -3,5 +3,9 @@ power_consumption:
   - cloud: 0.45
 carbon_intensity:
   - france: 20
-  - botswana: 810
-  - saudi_arabia: 530
+  - poland: 689
+  - czech_republic: 496
+energy_cost:
+  - poland: 0.21
+  - france: 0.2
+  - czech_republic: 0.33
