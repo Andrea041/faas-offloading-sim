@@ -32,7 +32,7 @@ nodes:
     country: poland
   - name: cloud1
     region: cloud
-    cost: 0.09005   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
+    cost: 0.1801   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
     speedup: 1.0
     memory: 8192
     country: france
@@ -65,7 +65,16 @@ functions:
 arrivals:
   - node: edge1
     function: f1
-    rate: 5.7
+    rate: 0.8
   - node: edge1
     function: f2
-    rate: 2.9
+    rate: 1.6
+  - node: edge1
+    function: f3
+    rate: 4.2
+  - node: edge1
+    function: f4
+    rate: 0.6
+  - node: edge1
+    function: f5
+    rate: 1.4

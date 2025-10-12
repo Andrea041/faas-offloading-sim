@@ -11,6 +11,6 @@ nodes:
     batch_size: 8
     stable_treshold: 0.001
     train_every: 10
-    w1: 0.05
+    w1: 0.3333
     # aggiunti
-    w2: 0.05
+    w2: 0.3333

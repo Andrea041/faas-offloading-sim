@@ -15,7 +15,7 @@ import tensorflow as tf
 import transfer_learning
 
 TRAIN = None
-TRANSFER = True
+TRANSFER = False
 
 class DQN():
     def __init__(self, node_name, isStable, close_the_door_time):
@@ -126,6 +126,15 @@ class DQN():
         save_model(self.model, "dqn_results/model_tl.keras", include_optimizer=False)
 
     def load(self):
+        loaded = tf.saved_model.load("dqn_results/model")
+        concrete_func = loaded.signatures["serving_default"]
+
+        print("Input signature:", concrete_func.inputs)
+        print("Output signature:", concrete_func.outputs)
+        print("\nGrafo:")
+        for node in concrete_func.graph.as_graph_def().node:
+            print(node.name)
+
         if not TRANSFER:
             self.model = load_model("dqn_results/model.keras")
         else:

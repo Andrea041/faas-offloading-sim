@@ -12,7 +12,7 @@ from arrivals import PoissonArrivalProcess, TraceArrivalProcess, MAPArrivalProce
 from infrastructure import *
 from simulation import Simulation
 
-TRANSFER = True
+TRANSFER = False
 
 def read_spec_file (spec_file_name, infra, config):
     peer_exposed_memory_fraction = config.getfloat(conf.SEC_SIM, conf.EDGE_EXPOSED_FRACTION, fallback=0.5)
@@ -139,7 +139,7 @@ def init_simulation (config):
     regions = [reg_edge, reg_cloud]
     # Latency
     latencies = {(reg_edge,reg_cloud): 0.100, (reg_edge,reg_edge): 0.005}
-    bandwidth_mbps = {(reg_edge,reg_edge): 100.0, (reg_cloud,reg_cloud): 1000.0,\
+    bandwidth_mbps = {(reg_edge,reg_edge): 100.0, (reg_cloud,reg_cloud): 1000.0,
             (reg_edge,reg_cloud): 10.0}
     # Infrastructure
     infra = Infrastructure(regions, latencies, bandwidth_mbps)
