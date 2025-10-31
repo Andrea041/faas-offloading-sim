@@ -2,79 +2,76 @@ classes:
   - name: standard
     max_resp_time: 0.500
     utility: 0.01
-    arrival_weight: 0.7
+    arrival_weight: 0.296
   - name: critical-1
     max_resp_time: 0.500
     utility: 1.0
-    arrival_weight: 0.1
+    arrival_weight: 0.323
   - name: critical-2
     max_resp_time: 0.500
     utility: 1.0
     deadline_penalty: 0.75
     drop_penalty: 0.75
-    arrival_weight: 0.1
+    arrival_weight: 0.080
   - name: batch
     max_resp_time: 10000.0
     utility: 1.0
-    arrival_weight: 0.1
+    arrival_weight: 0.301
 nodes:
   - name: edge1
     region: edge
-    cost: 0.0189 # costo_energetico = prezzo (€ / kWh) * potenza_nodo (kWh)
+    cost: 0.0216 # costo_energetico = prezzo (€ / kWh) * potenza_nodo (kWh)
     memory: 2560
     policy: dqn
     country: poland
   - name: edge2
     region: edge
-    cost: 0.0189
+    cost: 0.0216
     memory: 2560
     policy: basic
     country: poland
   - name: cloud1
     region: cloud
-    cost: 0.1801   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
+    cost: 0.1036   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
     speedup: 1.0
     memory: 8192
     country: france
 functions:
   - name: f1
     memory: 512
-    duration_mean: 0.4
+    duration_mean: 0.2615
     duration_scv: 0.1
     init_mean: 0.009
   - name: f2
-    memory: 512
-    duration_mean: 0.2
+    memory: 256
+    duration_mean: 0.2609
     duration_scv: 0.1
-    init_mean: 0.009
+    init_mean: 0.019
   - name: f3
     memory: 128
-    duration_mean: 0.3
+    duration_mean: 0.2580
     duration_scv: 0.1
     init_mean: 0.006
   - name: f4
     memory: 1024
-    duration_mean: 0.25
+    duration_mean: 0.2615
     duration_scv: 0.1
     init_mean: 0.024
   - name: f5
-    memory: 256
-    duration_mean: 0.45
+    memory: 512
+    duration_mean: 0.2
     duration_scv: 0.1
-    init_mean: 0.019
+    init_mean: 0.009
 arrivals:
   - node: edge1
     function: f1
-    rate: 0.8
+    rate: 3.72
   - node: edge1
     function: f2
-    rate: 1.6
+    rate: 2.63
   - node: edge1
     function: f3
-    rate: 4.2
+    rate: 1.23
   - node: edge1
     function: f4
-    rate: 0.6
-  - node: edge1
-    function: f5
-    rate: 1.4
+    rate: 4

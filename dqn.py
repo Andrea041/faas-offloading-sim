@@ -1,4 +1,5 @@
 import os
+import subprocess
 
 from transfer_learning import TL
 
@@ -16,6 +17,10 @@ import transfer_learning
 
 TRAIN = None
 TRANSFER = False
+
+MODEL_DIR = "dqn_results"
+MODEL_PATH = os.path.join(MODEL_DIR, "model")
+COMMIT_MSG = "Auto: aggiornato modello"
 
 class DQN():
     def __init__(self, node_name, isStable, close_the_door_time):
@@ -123,18 +128,24 @@ class DQN():
             signatures=inference_fn)
 
         # Questo è per il transfer learning
-        save_model(self.model, "dqn_results/model_tl.keras", include_optimizer=False)
+        if not TRANSFER:
+            save_model(self.model, "dqn_results/model_tl.keras", include_optimizer=False)
+
+        try:
+            subprocess.run(["git", "config", "user.name", "Andrea041"], check=True)
+            subprocess.run(["git", "config", "user.email", "aandreo.2001@gmail.com"], check=True)
+
+            subprocess.run(["git", "add", MODEL_PATH], check=True)
+            subprocess.run(["git", "commit", "-m", COMMIT_MSG], check=False)
+
+            subprocess.run(["git", "push"], check=True)
+
+        except subprocess.CalledProcessError as e:
+            print(f"Push model error: {e}")
+
+
 
     def load(self):
-        loaded = tf.saved_model.load("dqn_results/model")
-        concrete_func = loaded.signatures["serving_default"]
-
-        print("Input signature:", concrete_func.inputs)
-        print("Output signature:", concrete_func.outputs)
-        print("\nGrafo:")
-        for node in concrete_func.graph.as_graph_def().node:
-            print(node.name)
-
         if not TRANSFER:
             self.model = load_model("dqn_results/model.keras")
         else:

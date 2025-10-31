@@ -17,5 +17,6 @@ class TL:
             for layer in self.dqn_model.layers[:-1]:
                 layer.trainable = False
 
-        self.dqn_model.compile(loss='mse', optimizer=Adam(learning_rate=1e-5))
+        alpha_lr = 1e-5
+        self.dqn_model.compile(loss='mse', optimizer=Adam(learning_rate=alpha_lr))
         return self.dqn_model

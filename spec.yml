@@ -20,19 +20,19 @@ classes:
 nodes:
   - name: edge1
     region: edge
-    cost: 0.0189 # costo_energetico = prezzo (€ / kWh) * potenza_nodo (kWh)
+    cost: 0.0216 # costo_energetico = prezzo (€ / kWh) * potenza_nodo (kWh)
     memory: 2560
     policy: dqn
     country: poland
   - name: edge2
     region: edge
-    cost: 0.0189
+    cost: 0.0216
     memory: 2560
     policy: basic
     country: poland
   - name: cloud1
     region: cloud
-    cost: 0.09005   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
+    cost: 0.10355   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
     speedup: 1.0
     memory: 8192
     country: france
@@ -43,10 +43,10 @@ functions:
     duration_scv: 0.1
     init_mean: 0.009
   - name: f2
-    memory: 512
-    duration_mean: 0.2
+    memory: 256
+    duration_mean: 0.45
     duration_scv: 0.1
-    init_mean: 0.009
+    init_mean: 0.019
   - name: f3
     memory: 128
     duration_mean: 0.3
@@ -58,23 +58,20 @@ functions:
     duration_scv: 0.1
     init_mean: 0.024
   - name: f5
-    memory: 256
-    duration_mean: 0.45
+    memory: 512
+    duration_mean: 0.2
     duration_scv: 0.1
-    init_mean: 0.019
+    init_mean: 0.009
 arrivals:
   - node: edge1
     function: f1
-    rate: 0.8
+    rate: 2
   - node: edge1
     function: f2
-    rate: 1.6
+    rate: 3
   - node: edge1
     function: f3
-    rate: 4.2
+    rate: 4
   - node: edge1
     function: f4
-    rate: 0.6
-  - node: edge1
-    function: f5
-    rate: 1.4
+    rate: 1

@@ -7,7 +7,7 @@ from dqn import DQN
 from infrastructure import Region
 from policy import Policy, SchedulerDecision
 
-TRAIN = False
+TRAIN = True
 SHOW_PRINTS = True
 TRANSFER = False
 
