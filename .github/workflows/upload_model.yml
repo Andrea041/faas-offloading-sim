@@ -36,11 +36,11 @@ jobs:
 
           # Copia la nuova cartella model
           echo "Copying new model"
-          cp -r dqn_results/model serverledge/dqn_utils
+          cp -r dqn_results/model serverledge/dqn_utils/
           
           cd serverledge
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add model
+          git add dqn_utils/model
           git commit -m "Auto-update: new model from simulator" || echo "No changes to commit"
           git push origin fgcs24
