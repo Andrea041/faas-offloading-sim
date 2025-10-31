@@ -36,7 +36,7 @@ jobs:
 
           # Copia la nuova cartella model
           echo "Copying new model"
-          cp model serverledge/dqn_utils
+          cp dqn_results/model serverledge/dqn_utils
           
           cd serverledge
           git config user.name "github-actions[bot]"
