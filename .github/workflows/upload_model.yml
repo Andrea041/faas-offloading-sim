@@ -3,7 +3,7 @@ name: upload_model.yml
 on:
   push:
     paths:
-      - "model"
+      - "dqn_results/model/**"
 
 jobs:
   sync-to-go:
