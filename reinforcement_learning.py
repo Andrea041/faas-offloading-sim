@@ -270,28 +270,38 @@ class RL(Policy):
 
     def get_best_edge_node(self, required_memory, offloaded_from):
         peers = self._get_edge_peers()
-        candidates = []
 
-        for peer in peers:
-            if peer not in offloaded_from and peer.curr_memory * peer.peer_exposed_memory_fraction >= required_memory:
-                candidates.append(peer)
+        # Check sulla memoria disponibile
+        candidates = [
+            p for p in peers
+            if p not in offloaded_from and
+               p.curr_memory * p.peer_exposed_memory_fraction >= required_memory
+        ]
 
         if not candidates:
             return None
 
-        scored_peers = []
+        scores = []
         for p in candidates:
-            if p.carbon_intensity > 0:
-                # Se volessi mantenere il valore dello score compreso tra 0 e 1 dovrei implementare una normalizzazione
-                score = p.speedup / p.carbon_intensity
-            else:
-                # Caso ideale di un paese che ha consumo energetico nullo
-                score = float('inf')
-            scored_peers.append((score, p))
+            score = float('inf') if p.carbon_intensity == 0 else p.speedup / p.carbon_intensity
+            scores.append((score, p))
 
-        # Punteggio massimo
-        max_score = max(s for s, _ in scored_peers)
-        best_peers = [p for s, p in scored_peers if s == max_score]
+        # Return dei nodi miglior con carbon intensity pari a 0
+        infinite_peers = [p for s, p in scores if s == float('inf')]
+        if infinite_peers:
+            return self.simulation.node_choice_rng.choice(infinite_peers)
+
+        # Normalizzazione score
+        raw_scores = [s for s, _ in scores]
+        min_s, max_s = min(raw_scores), max(raw_scores)
+        norm_scores = [
+            ((s - min_s) / (max_s - min_s) if max_s != min_s else 1.0, p)
+            for s, p in scores
+        ]
+
+        # Selezione dello score più alto
+        max_score = max(s for s, _ in norm_scores)
+        best_peers = [p for s, p in norm_scores if s == max_score]
 
         return self.simulation.node_choice_rng.choice(best_peers)
 
