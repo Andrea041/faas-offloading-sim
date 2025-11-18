@@ -16,7 +16,7 @@ import tensorflow as tf
 import transfer_learning
 
 TRAIN = None
-TRANSFER = False
+TRANSFER = True
 
 MODEL_DIR = "dqn_results"
 MODEL_PATH = os.path.join(MODEL_DIR, "model")
@@ -115,7 +115,8 @@ class DQN():
 
 
     def save(self):
-        save_model(self.model, "dqn_results/model.keras")
+        if not TRANSFER:
+            save_model(self.model, "dqn_results/model.keras")
 
         # Questo è per serverledge
         @tf.function(input_signature=[tf.TensorSpec([None, None], tf.float32, name="state_input")])
@@ -128,7 +129,7 @@ class DQN():
             signatures=inference_fn)
 
         # Questo è per il transfer learning
-        if not TRANSFER:
+        if TRANSFER:
             save_model(self.model, "dqn_results/model_tl.keras", include_optimizer=False)
 
         try:
@@ -142,7 +143,6 @@ class DQN():
 
         except subprocess.CalledProcessError as e:
             print(f"Push model error: {e}")
-
 
 
     def load(self):

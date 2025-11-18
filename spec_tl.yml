@@ -2,21 +2,21 @@ classes:
   - name: standard
     max_resp_time: 0.500
     utility: 0.01
-    arrival_weight: 0.296
+    arrival_weight: 0.7
   - name: critical-1
     max_resp_time: 0.500
     utility: 1.0
-    arrival_weight: 0.323
+    arrival_weight: 0.1
   - name: critical-2
     max_resp_time: 0.500
     utility: 1.0
     deadline_penalty: 0.75
     drop_penalty: 0.75
-    arrival_weight: 0.080
+    arrival_weight: 0.1
   - name: batch
     max_resp_time: 10000.0
     utility: 1.0
-    arrival_weight: 0.301
+    arrival_weight: 0.1
 nodes:
   - name: edge1
     region: edge
@@ -32,46 +32,46 @@ nodes:
     country: poland
   - name: cloud1
     region: cloud
-    cost: 0.1036   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
+    cost: 0.10355   # costo di esecuzione sull'ìnfrastruttura cloud: 0.00005
     speedup: 1.0
     memory: 8192
     country: france
 functions:
   - name: f1
-    memory: 512
-    duration_mean: 0.2615
+    memory: 1024
+    duration_mean: 0.4
     duration_scv: 0.1
-    init_mean: 0.009
+    init_mean: 0.0492
   - name: f2
-    memory: 256
-    duration_mean: 0.2609
+    memory: 512
+    duration_mean: 0.35
     duration_scv: 0.1
-    init_mean: 0.019
+    init_mean: 0.0416
   - name: f3
-    memory: 128
-    duration_mean: 0.2580
+    memory: 256
+    duration_mean: 0.38
     duration_scv: 0.1
-    init_mean: 0.006
+    init_mean: 0.0316
   - name: f4
     memory: 1024
-    duration_mean: 0.2615
+    duration_mean: 0.34
     duration_scv: 0.1
-    init_mean: 0.024
+    init_mean: 0.0364
   - name: f5
     memory: 512
-    duration_mean: 0.2
+    duration_mean: 0.27
     duration_scv: 0.1
-    init_mean: 0.009
+    init_mean: 0.0118
 arrivals:
   - node: edge1
     function: f1
-    rate: 3.72
+    rate: 1.09
   - node: edge1
     function: f2
-    rate: 2.63
+    rate: 2.87
   - node: edge1
     function: f3
-    rate: 1.23
+    rate: 1.64
   - node: edge1
     function: f4
-    rate: 4
+    rate: 2.5

@@ -7,9 +7,9 @@ from dqn import DQN
 from infrastructure import Region
 from policy import Policy, SchedulerDecision
 
-TRAIN = True
+TRAIN = False
 SHOW_PRINTS = True
-TRANSFER = False
+TRANSFER = True
 
 class RL(Policy):
     '''

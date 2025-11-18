@@ -4,7 +4,7 @@ from tensorflow.keras.models import load_model
 FREEZE = True
 
 def load_tl_model():
-    return load_model("dqn_results/model_tl.keras", compile=False)
+    return load_model("dqn_results/model.keras", compile=False)
 
 class TL:
     def __init__(self, dqn_model):

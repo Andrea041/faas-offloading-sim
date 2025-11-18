@@ -1,6 +1,7 @@
 import json
+import sys
 
-TRANSFER = False
+TRANSFER = True
 
 def loss_plot(data, epsilon=1e-3):
     if "loss" in data:
@@ -34,7 +35,7 @@ def loss_plot(data, epsilon=1e-3):
     # Plot
     plt.figure(figsize=(10, 6))
     plt.plot(iterations, loss_values, label="Loss", alpha=0.4)
-    plt.plot(iterations, cumulative_avg_loss, label="Loss Media Cumulativa", color='red', linewidth=1)
+    plt.plot(iterations, cumulative_avg_loss, label="Loss media cumulativa", color='red', linewidth=1)
 
     # Disegna il tubo di convergenza
     plt.fill_between(iterations, lower_bound, upper_bound, color='green', alpha=0.3, label=f"Ampiezza banda di convergenza: ±{epsilon:.3g}")
@@ -43,43 +44,18 @@ def loss_plot(data, epsilon=1e-3):
     if converged_idx is not None:
         plt.axvline(iterations[converged_idx], color='black', linestyle='--', alpha=0.4)
         plt.text(iterations[converged_idx], upper_bound,
-                 f"Convergenza a partire dalla iterazione {iterations[converged_idx]}",
-                 color='black', va='bottom', ha='right', fontsize=9)
+                 f"Convergenza a partire dall'iterazione: {iterations[converged_idx]}",
+                 color='black', va='bottom', ha='right', fontsize=10)
 
-    plt.title("Loss con Media Cumulativa")
-    plt.xlabel("Iterazioni")
+    plt.title("Andamento della Loss")
+    plt.xlabel("Iterazione")
     plt.ylabel("Loss")
     plt.legend()
     plt.grid(True)
     plt.show()
 
 
-def reward_plot(data, save_path="avg_reward.npy"):
-    # Estrae i reward
-    rewards = data["reward"]
-
-    if not rewards:
-        raise ValueError("Nessun campo 'reward' trovato nel file JSON.")
-
-    episodes = np.arange(1, len(rewards) + 1)
-
-    # Calcolo media cumulativa
-    cumulative_avg = np.cumsum(rewards) / episodes
-
-    # Grafico
-    plt.figure(figsize=(10, 5))
-    plt.plot(episodes, cumulative_avg, label='Media Cumulativa', color='blue', linewidth=1)
-    plt.xlabel('Episodio')
-    plt.ylabel('Reward')
-    plt.title('Andamento Reward')
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
-    np.save(save_path, cumulative_avg)
-
-def reward_plot_transfer(data, epsilon=1e-2, adaptive=False, k=1.0, n_tail=50, save_path="avg_reward_tl.npy"):
+def reward_plot(data, save_path, epsilon=1e-2, adaptive=False, k=1.0, n_tail=50):
     # Controlli e preparazione
     if "reward" not in data:
         raise ValueError("Errore: la chiave 'reward' non è presente nel dict 'data'.")
@@ -117,23 +93,23 @@ def reward_plot_transfer(data, epsilon=1e-2, adaptive=False, k=1.0, n_tail=50, s
             break
 
     # Plot
-    plt.figure(figsize=(10, 5))
-    plt.plot(episodes, cumulative_avg, label='Media Cumulativa', linewidth=1)
-    plt.fill_between(episodes, lower_bound, upper_bound, alpha=0.3,
-                     label=f"Ampiezza banda di convergenza: ±{epsilon:.3g}")
+    plt.figure(figsize=(10, 6))
+    plt.plot(episodes, cumulative_avg, label='Reward medio cumulativo', linewidth=1)
+    plt.fill_between(episodes, lower_bound, upper_bound, alpha=0.4,
+                     label=f"Ampiezza banda di convergenza: ±{epsilon:.3g}", color='skyblue')
 
     # Se trovato, disegna linea verticale e annotazione (episodi sono 1-based)
     if converged_idx is not None:
         x_conv = episodes[converged_idx]
-        plt.axvline(x_conv, color='black', linestyle='--', alpha=0.8)
+        plt.axvline(x_conv, color='black', linestyle='--', alpha=0.4)
         # posiziono il testo sopra il tubo
         y_text = upper_bound + 0.02 * (np.max(cumulative_avg) - np.min(cumulative_avg) + 1e-8)
-        plt.text(x_conv, y_text, f"Episodio {int(x_conv)}", color='black',
-                 va='bottom', ha='left', fontsize=9)
+        plt.text(x_conv, y_text, f"Convergenza a partire dalla richiesta: {int(x_conv)}", color='black',
+                 va='bottom', ha='left', fontsize=10)
 
-    plt.xlabel('Episodio')
+    plt.xlabel('Numero di richieste elaborate')
     plt.ylabel('Reward')
-    plt.title('Andamento Reward')
+    plt.title('Andamento del reward medio')
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
@@ -143,39 +119,61 @@ def reward_plot_transfer(data, epsilon=1e-2, adaptive=False, k=1.0, n_tail=50, s
 
 
 def actions_plot(data):
-    # Prendi tutte le chiavi delle decisioni dello scheduler
     decision_keys = [k for k in data.keys() if k.startswith("SchedulerDecision.")]
-
-    # Trova il tempo massimo complessivo
     all_times = [t for key in decision_keys for t in data[key]]
     t_max = max(all_times) if all_times else 0
 
     plt.figure(figsize=(6, 6))
 
+    # Primo ciclo: disegna le linee
+    line_endpoints = []  # salviamo i valori finali per le etichette
+
     for key in decision_keys:
         times = sorted(data[key])
         counts = list(range(1, len(times) + 1))
 
-        # Se ci sono dati, aggiungi il tempo massimo per “prolungare” il conteggio
         if times:
             times = times + [t_max]
             counts = counts + [counts[-1]]
 
-        plt.step(times, counts, label=key.split(".")[1], where='post')
+        action = key.split(".")[1]
+        if action == "EXEC":
+            label = "Esecuzione locale"
+        elif action == "OFFLOAD_CLOUD":
+            label = "Offload Cloud"
+        elif action == "OFFLOAD_EDGE":
+            label = "Offload Edge"
+        else:
+            label = "Drop"
 
-        # Stampa il conteggio finale a lato della curva
+        plt.step(times, counts, label=label, where='post')
         if counts:
-            plt.text(t_max + 0.01*(t_max or 1), counts[-1], str(counts[-1]),
-                     verticalalignment='center')
+            line_endpoints.append(counts[-1])
 
-    plt.xlabel("Tempo")
-    plt.ylabel("Conteggio cumulativo")
-    plt.title("Scelte dello Scheduler nel tempo")
+    # Ora i limiti y sono definiti
+    y_min, y_max = plt.ylim()
+    min_dist = 0.015 * (y_max - y_min)
+    used_positions = []
+
+    # Secondo ciclo: scrivi le etichette
+    for i, key in enumerate(decision_keys):
+        counts = list(range(1, len(sorted(data[key])) + 1))
+        if not counts:
+            continue
+        y = counts[-1]
+        while any(abs(y - yp) < min_dist for yp in used_positions):
+            y += min_dist*0.25
+        used_positions.append(y)
+        plt.text(t_max + 0.01 * (t_max or 1), y, str(counts[-1]),
+                 va='center')
+
+    plt.xlabel("Tempo di simulazione (sec)")
+    plt.ylabel("Conteggio cumulativo per azione")
+    plt.title("Azioni eseguite nel tempo")
     plt.legend()
     plt.grid(True)
     plt.tight_layout()
     plt.show()
-
 
 
 import numpy as np
@@ -184,10 +182,10 @@ import matplotlib.pyplot as plt
 def plot_transfer_performance(file_no_transfer,
                               file_transfer,
                               asymptotic_window=10,
-                              jumpstart_zoom_window=2,
+                              jumpstart_zoom_window=6,
                               smooth=False,
                               savepath=None,
-                              figsize=(12,6)):
+                              figsize=(10,6)):
     """
     Plotta le curve 'Transfer' e 'No Transfer' leggendo due .npy,
     taglia gli zeri iniziali mantenendo gli indici originali e calcola:
@@ -217,9 +215,10 @@ def plot_transfer_performance(file_no_transfer,
 
     i0_no = first_nonzero_index(r_no)
     i0_tl = first_nonzero_index(r_tl)
+    min_r = min(i0_tl, i0_no)
 
-    r_no_trim = r_no[i0_no:]
-    r_tl_trim = r_tl[i0_tl:]
+    r_no_trim = r_no[1:]
+    r_tl_trim = r_tl[1:]
 
     # indici originali per il plotting
     x_no = np.arange(i0_no, i0_no + len(r_no_trim))
@@ -251,21 +250,23 @@ def plot_transfer_performance(file_no_transfer,
     asymp_tl = asymptotic_mean(r_tl_trim, asymptotic_window)
     asymp_diff = asymp_tl - asymp_no
 
+    min_com = min(len(x_tl), len(x_no))
+
     # --- Plot ---
     plt.figure(figsize=figsize)
-    plt.plot(x_tl[:len(x_no)], r_tl_plot[:len(r_no_plot)], label='Transfer', linewidth=1)
-    plt.plot(x_no, r_no_plot, label='No Transfer', linewidth=1)
+    plt.plot(x_tl[:min_com], r_tl_plot[:min_com], label='Transfer', linewidth=1)
+    plt.plot(x_no[:min_com], r_no_plot[:min_com], label='No Transfer', linewidth=1)
 
     # Asymptotic performance: freccia verticale alla fine della curva TL
     xt_end = min(x_tl[-1], x_no[-1])
     plt.annotate('', xy=(xt_end, asymp_no), xytext=(xt_end, asymp_tl),
                  arrowprops=dict(arrowstyle='<->', lw=1.2))
     plt.text(xt_end + 0.02*(plt.xlim()[1]-plt.xlim()[0]),
-             (asymp_no+asymp_tl)/2, 'Asymptotic\nPerformance', va='center', ha='left', fontsize=10)
+             (asymp_no+asymp_tl)/2, 'Delta', va='center', ha='left', fontsize=10)
 
-    plt.xlabel('Episodio')
+    plt.xlabel('Numero di richieste elaborate')
     plt.ylabel('Reward')
-    plt.title('Asymptotic Performance')
+    plt.title('Prestazioni asintotiche')
     plt.legend()
     plt.grid(True)
 
@@ -274,35 +275,45 @@ def plot_transfer_performance(file_no_transfer,
     plt.show()
 
     # === PLOT ZOOMATO SUL JUMPSTART ===
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=figsize)
 
     # Reindicizza da 0 solo per il confronto iniziale
-    r_no_zoom = r_no_trim[:jumpstart_zoom_window]
-    r_tl_zoom = r_tl_trim[:jumpstart_zoom_window]
-    x_zoom = np.arange(len(r_no_zoom))  # reindicizzato da 0
-    print(r_no_zoom, r_tl_zoom)
+    r_no_zoom = r_no_trim[:jumpstart_zoom_window-1]
+    r_tl_zoom = r_tl_trim[:jumpstart_zoom_window-1]
+    x_zoom = np.arange(len(r_no_zoom)+1)  # reindicizzato da 0
 
-    plt.plot(x_zoom, r_tl_zoom[:len(x_zoom)], label='Transfer', linewidth=1)
-    plt.plot(x_zoom, r_no_zoom[:len(x_zoom)], label='No Transfer', linewidth=1)
+    # --- Plot linee ---
+    plt.plot(x_zoom[1:], r_tl_zoom, label='Transfer', linewidth=1.5)
+    plt.plot(x_zoom[1:], r_no_zoom, label='No Transfer', linewidth=1.5)
 
-    # Disegna freccia jumpstart
-    plt.annotate('', xy=(0, r_no_zoom[0]), xytext=(0, r_tl_zoom[0]),
+    # --- Calcolo area zoom ---
+    y_min = min(r_tl_zoom[0], r_no_zoom[0])
+    y_max = max(r_tl_zoom[0], r_no_zoom[0])
+    y_center = (y_min + y_max) / 2
+    zoom_margin_y = (y_max - y_min) * 4 if (y_max - y_min) > 0 else 0.05
+
+    # --- Limiti assi ---
+    plt.xlim(1, jumpstart_zoom_window - 1)
+    plt.ylim(0, y_center + zoom_margin_y)
+
+    # --- Disegna freccia Jumpstart ---
+    plt.annotate('', xy=(1, r_no_zoom[0]), xytext=(1, r_tl_zoom[0]),
                  arrowprops=dict(arrowstyle='<->', lw=1.2, color='black'))
 
-    y_label = r_tl_zoom[0] * 1.2
-    plt.text(0.025, y_label,
-             f'Jumpstart = {jumpstart:.6f}',
-             color='black', va='bottom', ha='left', fontsize=10)
+    # --- Etichetta Jumpstart centrata ---
+    plt.text(1.1, y_center, f'Jumpstart = {jumpstart:.4f}', color='black',
+             va='center', ha='left', fontsize=10)
 
-    plt.title('Zoom sul Jumpstart')
-    plt.xlabel('Episodio')
+    # --- Decorazioni ---
+    plt.title('Jumpstart')
+    plt.xlabel('Numero di richieste soddisfatte')
     plt.ylabel('Reward')
-    plt.legend()
     plt.grid(True)
-
-    plt.yscale('log')
-    plt.title('Jumpstart (scala logaritmica)')
+    plt.legend()
+    plt.tight_layout()
     plt.show()
+
+
 
     # --- Transfer Ratio normalizzato ---
     min_len = min(len(r_no_trim), len(r_tl_trim))
@@ -341,6 +352,8 @@ def plot_transfer_performance(file_no_transfer,
 def main():
     # Sostituisci questo con il percorso effettivo del tuo file JSON
     json_file_path = "dqn_results/edge1.json"
+    # apri un file di log
+    sys.stdout = open("log.txt", "w")
 
     try:
         with open(json_file_path, "r") as f:
@@ -352,10 +365,10 @@ def main():
     loss_plot(data)
 
     if TRANSFER:
-        reward_plot_transfer(data)
-        plot_transfer_performance("avg_reward_serverledge.npy", "avg_reward_tl.npy")
+        reward_plot(data,"avg_reward_tl.npy")
+        plot_transfer_performance("avg_reward.npy", "avg_reward_tl.npy")
     else:
-        reward_plot(data)
+        reward_plot(data, "avg_reward.npy")
 
     actions_plot(data)
 
